@@ -1,6 +1,6 @@
 {
     "apps": [{
-        "name": "proxy-key-manager",
+        "name": "proxy-key-manager-nextjs",
         "script": "node_modules/next/dist/bin/next",
         "args": "start",
         "env": {

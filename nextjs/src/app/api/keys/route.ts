@@ -6,33 +6,36 @@ import { KeyResponse } from '@/types/api';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '25');
     const search = searchParams.get('search') || '';
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '25'));
 
-    const keys = dbService.getKeys();
+    const keys = await dbService.getKeys();
     const filteredKeys = search 
       ? keys.filter(key => key.key.toLowerCase().includes(search.toLowerCase()))
       : keys;
 
     const totalItems = filteredKeys.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     const startIndex = (page - 1) * pageSize;
-    const endIndex = pageSize === -1 ? filteredKeys.length : startIndex + pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalItems);
     const paginatedKeys = filteredKeys.slice(startIndex, endIndex);
 
     return NextResponse.json({
       keys: paginatedKeys,
       pagination: {
         totalItems,
+        totalPages,
         currentPage: page,
         pageSize,
-        totalPages: pageSize === -1 ? 1 : Math.ceil(totalItems / pageSize)
+        startItem: totalItems === 0 ? 0 : startIndex + 1,
+        endItem: endIndex
       }
     });
   } catch (error) {
-    console.error('Failed to fetch keys:', error);
+    console.error('Failed to get keys:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch keys' },
+      { error: error instanceof Error ? error.message : 'Failed to get keys' },
       { status: 500 }
     );
   }
@@ -40,24 +43,22 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const key = await request.json() as KeyResponse;
-    
-    // Kiểm tra key trùng
-    const existingKey = dbService.getKeys().find(k => k.key === key.key);
-    if (existingKey) {
-      return NextResponse.json(
-        { error: 'Key already exists' },
-        { status: 400 }
-      );
-    }
+    const body = await request.json();
+    const key: KeyResponse = {
+      ...body,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      lastRotatedAt: new Date().toISOString(),
+      isActive: true
+    };
 
-    dbService.addKey(key);
+    await dbService.addKey(key);
     proxyService.startKey(key);
-    return NextResponse.json({ success: true });
+    return NextResponse.json(key);
   } catch (error) {
     console.error('Failed to add key:', error);
     return NextResponse.json(
-      { error: 'Failed to add key' },
+      { error: error instanceof Error ? error.message : 'Failed to add key' },
       { status: 500 }
     );
   }
@@ -65,40 +66,19 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const key = await request.json() as KeyResponse;
-    const existingKey = dbService.getKeys().find(k => k.id === key.id);
-    if (!existingKey) {
-      return NextResponse.json(
-        { error: 'Key not found' },
-        { status: 404 }
-      );
-    }
-
-    // Kiểm tra key trùng khi edit
-    const duplicateKey = dbService.getKeys().find(k => 
-      k.key === key.key && k.id !== key.id
-    );
-    if (duplicateKey) {
-      return NextResponse.json(
-        { error: 'Key already exists' },
-        { status: 400 }
-      );
-    }
-
-    const updatedKey: KeyResponse = {
-      ...existingKey,
-      ...key,
-      rotationInterval: key.rotationInterval || existingKey.rotationInterval || 62,
-      isActive: key.isActive ?? existingKey.isActive,
+    const body = await request.json();
+    const key: KeyResponse = {
+      ...body,
+      lastRotatedAt: new Date().toISOString()
     };
 
-    dbService.updateKey(updatedKey);
-    proxyService.updateKey(updatedKey);
-    return NextResponse.json({ success: true });
+    await dbService.updateKey(key);
+    proxyService.updateKey(key);
+    return NextResponse.json(key);
   } catch (error) {
     console.error('Failed to update key:', error);
     return NextResponse.json(
-      { error: 'Failed to update key' },
+      { error: error instanceof Error ? error.message : 'Failed to update key' },
       { status: 500 }
     );
   }
@@ -106,14 +86,30 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { id } = await request.json();
-    dbService.deleteKey(id);
-    proxyService.stopKey(id);
-    return NextResponse.json({ success: true });
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Key ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const keys = await dbService.getKeys();
+    const key = keys.find((k: KeyResponse) => k.id === id);
+    if (!key) {
+      return NextResponse.json(
+        { error: 'Key not found' },
+        { status: 404 }
+      );
+    }
+
+    await dbService.deleteKey(id);
+    return NextResponse.json({ message: 'Key deleted successfully' });
   } catch (error) {
     console.error('Failed to delete key:', error);
     return NextResponse.json(
-      { error: 'Failed to delete key' },
+      { error: error instanceof Error ? error.message : 'Failed to delete key' },
       { status: 500 }
     );
   }

@@ -1,7 +1,6 @@
 'use client';
 
 import { ProxyKey } from '@/types/proxy';
-import Pagination from '../common/Pagination';
 
 interface ProxyTableProps {
   proxyKeys: ProxyKey[];
@@ -11,14 +10,6 @@ interface ProxyTableProps {
   onToggle: (id: string) => void;
   onEdit: (proxyKey: ProxyKey) => void;
   onDelete: (id: string) => void;
-  paginationData: {
-    totalItems: number;
-    currentPage: number;
-    pageSize: number;
-    totalPages: number;
-  };
-  onPageChange: (page: number) => void;
-  onPageSizeChange: (size: number) => void;
 }
 
 export default function ProxyTable({
@@ -28,10 +19,7 @@ export default function ProxyTable({
   onSelectAll,
   onToggle,
   onEdit,
-  onDelete,
-  paginationData,
-  onPageChange,
-  onPageSizeChange
+  onDelete
 }: ProxyTableProps) {
   const formatDateTime = (dateStr: string) => {
     return new Date(dateStr).toLocaleString();
@@ -127,13 +115,6 @@ export default function ProxyTable({
           </tbody>
         </table>
       </div>
-      
-      <Pagination
-        totalItems={paginationData.totalItems}
-        initialPageSize={paginationData.pageSize}
-        onPageChange={onPageChange}
-        onPageSizeChange={onPageSizeChange}
-      />
     </div>
   );
 } 

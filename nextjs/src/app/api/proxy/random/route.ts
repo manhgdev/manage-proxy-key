@@ -4,7 +4,7 @@ import { KeyResponse } from '@/types/api';
 
 export async function GET() {
   try {
-    const keys = dbService.getKeys();
+    const keys = await dbService.getKeys();
     const validKeys = keys.filter(key => 
       key.proxyData?.status === 100 && 
       key.isActive
@@ -26,7 +26,7 @@ export async function GET() {
       lastRotatedAt: new Date().toISOString()
     };
     
-    dbService.updateKey(updatedKey);
+    await dbService.updateKey(updatedKey);
 
     return NextResponse.json({
       proxyData: randomKey.proxyData,
@@ -35,7 +35,7 @@ export async function GET() {
   } catch (error) {
     console.error('Failed to get random proxy data:', error);
     return NextResponse.json(
-      { error: 'Failed to get random proxy data' },
+      { error: error instanceof Error ? error.message : 'Failed to get random proxy data' },
       { status: 500 }
     );
   }

@@ -82,7 +82,6 @@ func handleHTTPProxy(clientConn net.Conn, reader *bufio.Reader, firstLine string
 
 	// Thử tối đa maxRetries lần
 	for retry := 0; retry <= pm.maxRetries; retry++ {
-		// Lấy một proxy, loại trừ những proxy đã thử
 		var proxy *Proxy
 		if retry == 0 {
 			proxy = pm.GetRandomProxyWithFilter(httpOnlySelector)
@@ -92,13 +91,16 @@ func handleHTTPProxy(clientConn net.Conn, reader *bufio.Reader, firstLine string
 				excludeURL = lastProxy.URL
 			}
 			proxy = pm.GetNextWorkingProxyWithFilter(excludeURL, httpOnlySelector)
-			logger.Info("HTTP Retry %d/%d with proxy %s", retry, pm.maxRetries, proxy.URL)
 		}
 
 		if proxy == nil {
 			logger.Error("No more available HTTP proxies to try after %d attempts", retry)
 			clientConn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
 			return
+		}
+
+		if retry > 0 {
+			logger.Info("HTTP Retry %d/%d with proxy %s", retry, pm.maxRetries, proxy.URL)
 		}
 
 		// Bỏ qua nếu đã thử proxy này

@@ -1,0 +1,11 @@
+{
+    "apps": [{
+        "name": "proxy-key-manager-go",
+        "script": "go run main.go",
+        "args": "start",
+        "env": {
+            "NODE_ENV": "production",
+            "PORT": 8001
+        }
+    }]
+}

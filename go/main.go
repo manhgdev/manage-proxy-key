@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	"proxy/config"
 	"proxy/proxy"
 )
 
@@ -16,6 +17,10 @@ const (
 
 func main() {
 	log.Println("[INFO] Khởi động proxy server")
+
+	if err := config.LoadConfig(); err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
 
 	pm := proxy.NewProxyManager()
 

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"proxy/config"
 )
 
 type ProxyResponse struct {
@@ -136,7 +138,7 @@ func FetchProxyFromAPI() ([]*Proxy, error) {
 		Timeout: 10 * time.Second,
 	}
 
-	resp, err := client.Get("http://localhost:3000/api/proxy/random")
+	resp, err := client.Get(config.AppConfig.ProxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch proxy from API: %v", err)
 	}

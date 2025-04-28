@@ -17,6 +17,8 @@ interface PaginationData {
   currentPage: number;
   pageSize: number;
   totalPages: number;
+  startItem: number;
+  endItem: number;
 }
 
 // Tạo component SearchInput riêng
@@ -61,7 +63,9 @@ export default function ProxyKeyManager() {
     totalItems: 0,
     currentPage: 1,
     pageSize: 25,
-    totalPages: 1
+    totalPages: 1,
+    startItem: 1,
+    endItem: 25
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
@@ -195,24 +199,17 @@ export default function ProxyKeyManager() {
 
     // Nếu có key đơn lẻ
     if (newKey.key) {
-      const proxyKey: ProxyKey = {
-        id: Date.now().toString(),
-        key: newKey.key,
-        url: '',
-        expirationDate: '',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        lastRotatedAt: new Date().toISOString(),
-        rotationInterval: newKey.rotationInterval,
-      };
-
       try {
         const response = await fetch('/api/keys', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(proxyKey),
+          body: JSON.stringify({
+            key: newKey.key,
+            rotationInterval: newKey.rotationInterval,
+            isActive: true
+          }),
         });
 
         const data = await response.json();
@@ -233,24 +230,17 @@ export default function ProxyKeyManager() {
     // Nếu có uploadedKeys
     if (uploadedKeys.length > 0) {
       for (const key of uploadedKeys) {
-        const proxyKey: ProxyKey = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-          key: key,
-          url: '',
-          expirationDate: '',
-          isActive: true,
-          createdAt: new Date().toISOString(),
-          lastRotatedAt: new Date().toISOString(),
-          rotationInterval: newKey.rotationInterval,
-        };
-
         try {
           const response = await fetch('/api/keys', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(proxyKey),
+            body: JSON.stringify({
+              key: key,
+              rotationInterval: newKey.rotationInterval,
+              isActive: true
+            }),
           });
 
           const data = await response.json();
@@ -321,12 +311,8 @@ export default function ProxyKeyManager() {
     if (!confirm('Are you sure you want to delete this key?')) return;
 
     try {
-      const response = await fetch('/api/keys', {
+      const response = await fetch(`/api/keys?id=${id}`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id }),
       });
 
       if (response.ok) {
@@ -522,12 +508,8 @@ export default function ProxyKeyManager() {
 
     try {
       for (const id of keysToDelete) {
-        const response = await fetch('/api/keys', {
+        const response = await fetch(`/api/keys?id=${id}`, {
           method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ id }),
         });
         if (response.ok) {
           setProxyKeys(prevKeys => prevKeys.filter(k => k.id !== id));
@@ -774,10 +756,20 @@ export default function ProxyKeyManager() {
           onToggle={handleToggle}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          paginationData={paginationData}
+        />
+
+        <div className="mt-4">
+          <Pagination
+            currentPage={paginationData.currentPage}
+            totalPages={paginationData.totalPages}
+            pageSize={paginationData.pageSize}
+            totalItems={paginationData.totalItems}
+            startItem={paginationData.startItem}
+            endItem={paginationData.endItem}
             onPageChange={setCurrentPage}
             onPageSizeChange={setPageSize}
           />
+        </div>
       </div>
     </main>
   );

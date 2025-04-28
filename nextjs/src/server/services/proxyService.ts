@@ -11,9 +11,18 @@ class ProxyService {
   private isAutoRunning: boolean;
 
   constructor() {
-    this.isAutoRunning = dbService.getAutoRunStatus();
-    if (this.isAutoRunning) {
-      this.initializeTimers();
+    this.isAutoRunning = false;
+    this.initialize();
+  }
+
+  private async initialize() {
+    try {
+      this.isAutoRunning = await dbService.getAutoRunStatus();
+      if (this.isAutoRunning) {
+        await this.initializeTimers();
+      }
+    } catch (error) {
+      console.error('Failed to initialize:', error);
     }
   }
 
@@ -37,14 +46,17 @@ class ProxyService {
     if (!this.isAutoRunning) return;
     this.stopAllTimers();
 
-    const keys = dbService.getKeys();
-    for (const key of keys) {
-      if (key.isActive) {
-        const freshKey = dbService.getKeyById(key.id);
-        if (!freshKey) continue;
-
-        this.startTimer(freshKey);
+    try {
+      const keys = await dbService.getKeys();
+      for (const key of keys) {
+        if (key.isActive) {
+          const freshKey = await dbService.getKeyById(key.id);
+          if (!freshKey) continue;
+          this.startTimer(freshKey);
+        }
       }
+    } catch (error) {
+      console.error('Failed to initialize timers:', error);
     }
   }
 
@@ -80,7 +92,7 @@ class ProxyService {
         lastRotatedAt: new Date().toISOString()
       };
 
-      dbService.updateKey(updatedKey);
+      await dbService.updateKey(updatedKey);
 
       const fetchTime = Date.now() - startTime;
       this.log(key, 'Fetch completed fetchTime: ' + `${fetchTime}ms`);
@@ -121,33 +133,36 @@ class ProxyService {
     this.log(key, 'Timer scheduled nextRun: ' + `${(delay / 1000).toFixed(1)}s`);
 
     const timer = setTimeout(async () => {
-      this.timers.delete(key.id); // Xóa timer ngay khi bắt đầu fetch để chống trùng
+      this.timers.delete(key.id);
 
       if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
         this.log(key, 'Timer aborted before fetch');
         return;
       }
 
-      let freshKey = dbService.getKeyById(key.id);
-      if (!freshKey || !freshKey.isActive) {
-        this.log(key, 'Key not found or inactive, stopping timer');
-        this.stopKey(key.id);
-        return;
+      try {
+        const freshKey = await dbService.getKeyById(key.id);
+        if (!freshKey || !freshKey.isActive) {
+          this.log(key, 'Key not found or inactive, stopping timer');
+          this.stopKey(key.id);
+          return;
+        }
+
+        if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
+          this.log(key, 'AutoRun stopped during processing, abort fetch');
+          return;
+        }
+
+        const fetchTime = await this.fetchProxyData(freshKey);
+
+        const updatedKey = await dbService.getKeyById(key.id);
+        if (updatedKey && updatedKey.isActive) {
+          const nextDelay = updatedKey.rotationInterval * 1000 + fetchTime;
+          this.startTimerWithDelay(updatedKey, nextDelay);
+        }
+      } catch (error) {
+        console.error(`Error in timer for key ${key.id}:`, error);
       }
-
-      if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
-        this.log(key, 'AutoRun stopped during processing, abort fetch');
-        return;
-      }
-
-      const fetchTime = await this.fetchProxyData(freshKey);
-
-      freshKey = dbService.getKeyById(key.id);
-      if (freshKey && freshKey.isActive) {
-        const nextDelay = freshKey.rotationInterval * 1000 + fetchTime;
-        this.startTimerWithDelay(freshKey, nextDelay);
-      }
-
     }, delay);
 
     this.timers.set(key.id, timer);
@@ -185,26 +200,26 @@ class ProxyService {
     this.stopTimer(keyId);
   }
 
-  public updateKey(key: KeyResponse) {
+  public async updateKey(key: KeyResponse) {
     this.stopKey(key.id);
 
     if (this.isAutoRunning) {
-      const freshKey = dbService.getKeyById(key.id);
+      const freshKey = await dbService.getKeyById(key.id);
       if (freshKey && freshKey.isActive) {
         this.startTimer(freshKey);
       }
     }
   }
 
-  public toggleAutoRun() {
+  public async toggleAutoRun() {
     const oldStatus = this.isAutoRunning;
     this.isAutoRunning = !this.isAutoRunning;
-    dbService.setAutoRunStatus(this.isAutoRunning);
+    await dbService.setAutoRunStatus(this.isAutoRunning);
 
     this.log(null, `Auto run status changed: ${oldStatus} -> ${this.isAutoRunning}`);
 
     if (this.isAutoRunning) {
-      this.initializeTimers();
+      await this.initializeTimers();
     } else {
       this.stopAllTimers();
       this.log(null, 'All timers stopped');

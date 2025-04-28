@@ -6,7 +6,7 @@
     "dev": "lsof -i :3000 -t | xargs kill -9 || true && next dev",
     "build": "next build",
     "start": "next start",
-    "start:prod": "NODE_ENV=production next start -p 3000",
+    "start:prod": "bun run build && NODE_ENV=production next start -p 8000",
     "lint": "next lint",
     "kill": "lsof -i :3000 -t | xargs kill -9",
     "proxy": "bun run src/server/intermediary/index.ts",
