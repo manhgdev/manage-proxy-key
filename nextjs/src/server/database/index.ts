@@ -3,15 +3,23 @@ import { SCHEMA } from '@server/database/schema';
 import { KeyResponse } from '@/types/api';
 import { DatabaseRow, SettingsRow } from '@/types/database';
 import path from 'path';
+import fs from 'fs';
 
-const DB_PATH = process.env.NODE_ENV === 'production' 
-  ? path.join(process.cwd(), '.next', 'proxy_keys.db')
-  : 'proxy_keys.db';
+const DB_DIR = process.env.NODE_ENV === 'production' 
+  ? path.join(process.cwd(), 'data')
+  : path.join(process.cwd(), 'data');
+
+// Đảm bảo thư mục data tồn tại
+if (!fs.existsSync(DB_DIR)) {
+  fs.mkdirSync(DB_DIR, { recursive: true });
+}
+
+const DB_PATH = path.join(DB_DIR, 'proxy_keys.db');
 
 let db: Database.Database;
 
 try {
-  db = new Database(DB_PATH);
+  db = new Database(DB_PATH, { verbose: console.log });
   Object.values(SCHEMA).forEach(schema => db.exec(schema));
 } catch (error) {
   console.error('Error initializing database:', error);

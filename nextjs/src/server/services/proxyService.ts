@@ -236,6 +236,10 @@ class ProxyService {
     if (!this.isAutoRunning) return;
     this.startTimer(key);
   }
+
+  public async fetchProxyDataForRandom(key: KeyResponse): Promise<number> {
+    return this.fetchProxyData(key);
+  }
 }
 
 export const proxyService = new ProxyService();

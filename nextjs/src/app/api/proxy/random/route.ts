@@ -1,41 +1,43 @@
 import { NextResponse } from 'next/server';
 import { dbService } from '@server/database';
-import { KeyResponse } from '@/types/api';
+import { proxyService } from '@server/services/proxyService';
 
 export async function GET() {
   try {
     const keys = await dbService.getKeys();
-    const validKeys = keys.filter(key => 
-      key.proxyData?.status === 100 && 
-      key.isActive
-    );
-
-    if (validKeys.length === 0) {
+    const activeKeys = keys.filter(key => key.isActive);
+    
+    if (activeKeys.length === 0) {
       return NextResponse.json(
-        { error: 'No valid proxy data available' },
+        { error: 'No active keys found' },
         { status: 404 }
       );
     }
 
-    // Random một key từ danh sách valid
-    const randomKey = validKeys[Math.floor(Math.random() * validKeys.length)];
+    // Lấy key ngẫu nhiên
+    const randomKey = activeKeys[Math.floor(Math.random() * activeKeys.length)];
     
-    // Cập nhật lastRotatedAt để đánh dấu key đã được sử dụng
-    const updatedKey: KeyResponse = {
-      ...randomKey,
-      lastRotatedAt: new Date().toISOString()
-    };
+    // Cập nhật dữ liệu proxy cho key này
+    await proxyService.fetchProxyDataForRandom(randomKey);
     
-    await dbService.updateKey(updatedKey);
+    // Lấy key mới nhất từ database
+    const updatedKey = await dbService.getKeyById(randomKey.id);
+    
+    if (!updatedKey || !updatedKey.proxyData) {
+      return NextResponse.json(
+        { error: 'Failed to get proxy data' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
-      proxyData: randomKey.proxyData,
-      key: randomKey.key
+      proxyData: updatedKey.proxyData,
+      key: updatedKey.key
     });
   } catch (error) {
-    console.error('Failed to get random proxy data:', error);
+    console.error('Failed to get random proxy:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to get random proxy data' },
+      { error: error instanceof Error ? error.message : 'Failed to get random proxy' },
       { status: 500 }
     );
   }
