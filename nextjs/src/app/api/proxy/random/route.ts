@@ -1,43 +1,48 @@
 import { NextResponse } from 'next/server';
 import { dbService } from '@server/database';
 import { proxyService } from '@server/services/proxyService';
+import { KeyResponse } from '@/types/api';
+
+// Chỉ export các hàm route handler
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
   try {
     const keys = await dbService.getKeys();
-    const activeKeys = keys.filter(key => key.isActive);
-    
-    if (activeKeys.length === 0) {
+    const validKeys = keys.filter(key => 
+      key.proxyData?.status === 100 && 
+      key.isActive
+    );
+
+    if (validKeys.length === 0) {
       return NextResponse.json(
-        { error: 'No active keys found' },
+        { error: 'No valid proxy data available' },
         { status: 404 }
       );
     }
 
-    // Lấy key ngẫu nhiên
-    const randomKey = activeKeys[Math.floor(Math.random() * activeKeys.length)];
+    // Random một key từ danh sách valid
+    const randomKey = validKeys[Math.floor(Math.random() * validKeys.length)];
     
-    // Cập nhật dữ liệu proxy cho key này
-    await proxyService.fetchProxyDataForRandom(randomKey);
+    // Cập nhật lastRotatedAt để đánh dấu key đã được sử dụng
+    const updatedKey: KeyResponse = {
+      ...randomKey,
+      lastRotatedAt: new Date().toISOString()
+    };
     
-    // Lấy key mới nhất từ database
-    const updatedKey = await dbService.getKeyById(randomKey.id);
-    
-    if (!updatedKey || !updatedKey.proxyData) {
-      return NextResponse.json(
-        { error: 'Failed to get proxy data' },
-        { status: 500 }
-      );
-    }
+    // Sử dụng proxyService để cập nhật key
+    await proxyService.updateKey(updatedKey);
 
     return NextResponse.json({
-      proxyData: updatedKey.proxyData,
-      key: updatedKey.key
+      proxyData: randomKey.proxyData,
+      key: randomKey.key,
+      lastRotatedAt: updatedKey.lastRotatedAt
     });
   } catch (error) {
-    console.error('Failed to get random proxy:', error);
+    console.error('Failed to get random proxy data:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to get random proxy' },
+      { error: error instanceof Error ? error.message : 'Failed to get random proxy data' },
       { status: 500 }
     );
   }

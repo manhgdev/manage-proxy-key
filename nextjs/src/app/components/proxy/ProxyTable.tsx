@@ -42,7 +42,7 @@ export default function ProxyTable({
               <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">#</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Key</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Expiration</th>
-              <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Rotation Interval</th>
+              <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Rotation Interval (s)</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Proxy Data</th>
             </tr>
@@ -65,7 +65,7 @@ export default function ProxyTable({
                     ? proxyKey.proxyData["Token expiration date"]
                     : 'N/A'}
                 </td>
-                <td className="px-4 py-3 text-center">{proxyKey.rotationInterval}s</td>
+                <td className="px-4 py-3 text-center">{proxyKey.rotationInterval}</td>
                 <td className="px-4 py-3">
                   <div className="flex space-x-2">
                     <button

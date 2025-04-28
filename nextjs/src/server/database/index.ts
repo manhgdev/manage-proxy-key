@@ -19,7 +19,7 @@ const DB_PATH = path.join(DB_DIR, 'proxy_keys.db');
 let db: Database.Database;
 
 try {
-  db = new Database(DB_PATH, { verbose: console.log });
+  db = new Database(DB_PATH, {  });
   Object.values(SCHEMA).forEach(schema => db.exec(schema));
 } catch (error) {
   console.error('Error initializing database:', error);

@@ -5,22 +5,33 @@ const PROXY_API_URL = 'https://proxyxoay.org/api/get.php?key=';
 
 class ProxyService {
   private timers: Map<string, NodeJS.Timeout> = new Map();
-  private isCancelled: Map<string, boolean> = new Map();
-  private isFetching: Map<string, boolean> = new Map();
   private processing: Map<string, boolean> = new Map();
   private isAutoRunning: boolean;
+  private isInitialized: boolean;
+  private static instance: ProxyService | null = null;
+  private isProcessingAutoRun: boolean = false;
 
-  constructor() {
+  private constructor() {
     this.isAutoRunning = false;
-    this.initialize();
+    this.isInitialized = false;
   }
 
-  private async initialize() {
+  public static getInstance(): ProxyService {
+    if (!ProxyService.instance) {
+      ProxyService.instance = new ProxyService();
+    }
+    return ProxyService.instance;
+  }
+
+  public async initialize() {
+    if (this.isInitialized) return;
+    
     try {
       this.isAutoRunning = await dbService.getAutoRunStatus();
       if (this.isAutoRunning) {
         await this.initializeTimers();
       }
+      this.isInitialized = true;
     } catch (error) {
       console.error('Failed to initialize:', error);
     }
@@ -44,15 +55,15 @@ class ProxyService {
 
   private async initializeTimers() {
     if (!this.isAutoRunning) return;
+    
+    // Dừng tất cả timer hiện tại trước khi khởi tạo lại
     this.stopAllTimers();
 
     try {
       const keys = await dbService.getKeys();
       for (const key of keys) {
-        if (key.isActive) {
-          const freshKey = await dbService.getKeyById(key.id);
-          if (!freshKey) continue;
-          this.startTimer(freshKey);
+        if (key.isActive && !this.timers.has(key.id)) {
+          this.startTimer(key);
         }
       }
     } catch (error) {
@@ -61,30 +72,13 @@ class ProxyService {
   }
 
   private async fetchProxyData(key: KeyResponse): Promise<number> {
-    if (!this.isAutoRunning || this.isCancelled.get(key.id) || this.isFetching.get(key.id) || this.processing.get(key.id)) {
-      this.log(key, 'Fetch aborted due to auto-run disabled, timer cancelled, fetch already in progress, or processing lock');
-      return 0;
-    }
-
-    this.isFetching.set(key.id, true);
-    this.processing.set(key.id, true);
     const startTime = Date.now();
 
     try {
       const response = await fetch(PROXY_API_URL + key.key);
-      if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
-        this.log(key, 'Fetch aborted during fetch due to auto-run disabled');
-        return 0;
-      }
-
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const data = await response.json() as ProxyData;
-
-      if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
-        this.log(key, 'Fetch aborted after fetch but before update');
-        return 0;
-      }
 
       const updatedKey: KeyResponse = {
         ...key,
@@ -105,9 +99,6 @@ class ProxyService {
         fetchTime: `${Date.now() - startTime}ms`
       });
       return 0;
-    } finally {
-      this.isFetching.delete(key.id);
-      this.processing.delete(key.id);
     }
   }
 
@@ -116,9 +107,11 @@ class ProxyService {
       this.log(key, 'StartTimer skipped due to processing lock');
       return;
     }
-
-    const delay = key.rotationInterval * 1000;
-    this.startTimerWithDelay(key, delay);
+    if (this.timers.has(key.id)) {
+      this.log(key, 'Timer already exists, skipping start');
+      return;
+    }
+    this.startTimerWithDelay(key, key.rotationInterval * 1000);
   }
 
   private startTimerWithDelay(key: KeyResponse, delay: number) {
@@ -128,17 +121,18 @@ class ProxyService {
     }
 
     this.stopTimer(key.id);
-    this.isCancelled.set(key.id, false);
 
     this.log(key, 'Timer scheduled nextRun: ' + `${(delay / 1000).toFixed(1)}s`);
 
     const timer = setTimeout(async () => {
       this.timers.delete(key.id);
 
-      if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
-        this.log(key, 'Timer aborted before fetch');
+      if (!this.isAutoRunning || this.processing.get(key.id)) {
+        this.log(key, 'Timer aborted or already processing');
         return;
       }
+
+      this.processing.set(key.id, true);
 
       try {
         const freshKey = await dbService.getKeyById(key.id);
@@ -148,20 +142,17 @@ class ProxyService {
           return;
         }
 
-        if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
-          this.log(key, 'AutoRun stopped during processing, abort fetch');
-          return;
-        }
-
         const fetchTime = await this.fetchProxyData(freshKey);
 
         const updatedKey = await dbService.getKeyById(key.id);
         if (updatedKey && updatedKey.isActive) {
-          const nextDelay = updatedKey.rotationInterval * 1000 + fetchTime;
+          const nextDelay = updatedKey.rotationInterval * 1000;
           this.startTimerWithDelay(updatedKey, nextDelay);
         }
       } catch (error) {
         console.error(`Error in timer for key ${key.id}:`, error);
+      } finally {
+        this.processing.delete(key.id);
       }
     }, delay);
 
@@ -173,26 +164,24 @@ class ProxyService {
     if (timer) {
       clearTimeout(timer);
       this.timers.delete(keyId);
+      this.processing.delete(keyId);
     }
-    this.isCancelled.delete(keyId);
-    this.isFetching.delete(keyId);
-    this.processing.delete(keyId);
   }
 
   private stopAllTimers() {
     this.timers.forEach((timer, keyId) => {
       clearTimeout(timer);
-      this.isCancelled.delete(keyId);
-      this.isFetching.delete(keyId);
       this.processing.delete(keyId);
     });
     this.timers.clear();
+    this.processing.clear();
   }
 
   public startKey(key: KeyResponse) {
-    if (this.isAutoRunning) {
-      this.startTimer(key);
-    }
+    if (!this.isAutoRunning) return;
+    if (this.processing.get(key.id)) return;
+    if (this.timers.has(key.id)) return;
+    this.startTimer(key);
   }
 
   public stopKey(keyId: string) {
@@ -202,30 +191,38 @@ class ProxyService {
 
   public async updateKey(key: KeyResponse) {
     this.stopKey(key.id);
-
-    if (this.isAutoRunning) {
-      const freshKey = await dbService.getKeyById(key.id);
-      if (freshKey && freshKey.isActive) {
-        this.startTimer(freshKey);
-      }
+    if (!this.isAutoRunning) return;
+    
+    const freshKey = await dbService.getKeyById(key.id);
+    if (freshKey?.isActive) {
+      this.startTimer(freshKey);
     }
   }
 
   public async toggleAutoRun() {
-    const oldStatus = this.isAutoRunning;
-    this.isAutoRunning = !this.isAutoRunning;
-    await dbService.setAutoRunStatus(this.isAutoRunning);
-
-    this.log(null, `Auto run status changed: ${oldStatus} -> ${this.isAutoRunning}`);
-
-    if (this.isAutoRunning) {
-      await this.initializeTimers();
-    } else {
-      this.stopAllTimers();
-      this.log(null, 'All timers stopped');
+    if (this.isProcessingAutoRun) {
+      return this.isAutoRunning;
     }
 
-    return this.isAutoRunning;
+    this.isProcessingAutoRun = true;
+    try {
+      const oldStatus = this.isAutoRunning;
+      this.isAutoRunning = !this.isAutoRunning;
+      await dbService.setAutoRunStatus(this.isAutoRunning);
+
+      this.log(null, `Auto run status changed: ${oldStatus} -> ${this.isAutoRunning}`);
+
+      if (this.isAutoRunning) {
+        await this.initializeTimers();
+      } else {
+        this.stopAllTimers();
+        this.log(null, 'All timers stopped');
+      }
+
+      return this.isAutoRunning;
+    } finally {
+      this.isProcessingAutoRun = false;
+    }
   }
 
   public getAutoRunStatus() {
@@ -236,10 +233,7 @@ class ProxyService {
     if (!this.isAutoRunning) return;
     this.startTimer(key);
   }
-
-  public async fetchProxyDataForRandom(key: KeyResponse): Promise<number> {
-    return this.fetchProxyData(key);
-  }
 }
 
-export const proxyService = new ProxyService();
+// Export singleton instance
+export const proxyService = ProxyService.getInstance();
