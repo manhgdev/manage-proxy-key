@@ -213,10 +213,15 @@ class ProxyService {
       this.log(null, `Auto run status changed: ${oldStatus} -> ${this.isAutoRunning}`);
 
       if (this.isAutoRunning) {
+        // Khi bật auto run, khởi tạo lại timers
         await this.initializeTimers();
       } else {
+        // Khi tắt auto run, xóa hoàn toàn mọi thứ
         this.stopAllTimers();
-        this.log(null, 'All timers stopped');
+        this.timers.clear();
+        this.processing.clear();
+        this.isInitialized = false; // Reset trạng thái khởi tạo
+        this.log(null, 'All timers, processes and initialization stopped completely');
       }
 
       return this.isAutoRunning;
