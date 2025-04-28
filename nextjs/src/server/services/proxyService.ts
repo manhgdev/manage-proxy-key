@@ -207,6 +207,13 @@ class ProxyService {
     this.isProcessingAutoRun = true;
     try {
       const oldStatus = this.isAutoRunning;
+      
+      // Dừng tất cả timers trước khi thay đổi trạng thái
+      this.stopAllTimers();
+      this.timers.clear();
+      this.processing.clear();
+      
+      // Thay đổi trạng thái
       this.isAutoRunning = !this.isAutoRunning;
       await dbService.setAutoRunStatus(this.isAutoRunning);
 
@@ -214,13 +221,11 @@ class ProxyService {
 
       if (this.isAutoRunning) {
         // Khi bật auto run, khởi tạo lại timers
-        await this.initializeTimers();
+        this.isInitialized = false; // Reset trạng thái khởi tạo
+        await this.initialize();
       } else {
         // Khi tắt auto run, xóa hoàn toàn mọi thứ
-        this.stopAllTimers();
-        this.timers.clear();
-        this.processing.clear();
-        this.isInitialized = false; // Reset trạng thái khởi tạo
+        this.isInitialized = false;
         this.log(null, 'All timers, processes and initialization stopped completely');
       }
 
