@@ -1,8 +1,8 @@
 {
     "apps": [{
         "name": "proxy-key-manager-nextjs",
-        "script": "node_modules/next/dist/bin/next",
-        "args": "start",
+        "script": "bun",
+        "args": "run start:prod",
         "env": {
             "NODE_ENV": "production",
             "PORT": 8000
