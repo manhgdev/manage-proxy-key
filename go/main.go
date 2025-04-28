@@ -5,32 +5,45 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"proxy/proxy"
 )
 
 const (
-	// Cấu hình file proxy
-	httpProxyFile   = "proxy_http.txt"
-	socks5ProxyFile = "proxy_sockets5.txt"
-
-	// Cổng lắng nghe
 	serverPort = ":8081"
 )
 
 func main() {
 	log.Println("[INFO] Khởi động proxy server")
 
-	// Tạo proxy manager
 	pm := proxy.NewProxyManager()
 
-	// Tải proxy từ nhiều file
-	if err := proxy.LoadProxiesFromMultipleFiles(httpProxyFile, socks5ProxyFile, pm); err != nil {
-		log.Fatalf("[ERROR] Failed to load proxies: %v", err)
+	// Hàm để cập nhật proxy từ API
+	updateProxies := func() {
+		proxies, err := proxy.FetchProxyFromAPI()
+		if err != nil {
+			log.Printf("[ERROR] Failed to fetch proxy from API: %v", err)
+			return
+		}
+
+		for _, p := range proxies {
+			pm.AddProxy(p)
+			log.Printf("[INFO] Added proxy: %s (Type: %v)", p.URL, p.Type)
+		}
 	}
 
-	// Bắt đầu giám sát danh sách proxy
-	go proxy.MonitorProxyList(httpProxyFile, socks5ProxyFile, pm)
+	// Cập nhật proxy ban đầu
+	updateProxies()
+
+	// Cập nhật proxy định kỳ mỗi 5 phút
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			updateProxies()
+		}
+	}()
 
 	// Khởi động proxy server
 	go func() {

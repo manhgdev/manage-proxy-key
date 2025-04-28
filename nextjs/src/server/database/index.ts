@@ -54,6 +54,11 @@ export const dbService = {
     );
   },
 
+  getKeyById(id: string): KeyResponse | null {
+    const keys = this.getKeys(); // giả sử getKeys trả về list tất cả keys
+    return keys.find(key => key.id === id) || null;
+  },
+
   updateKey: (key: KeyResponse): void => {
     const stmt = db.prepare(`
       UPDATE proxy_keys

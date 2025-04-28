@@ -12,38 +12,77 @@ import (
 	"time"
 )
 
-type Proxy struct {
-	URL         string
-	Username    string
-	Password    string
-	LastUsed    time.Time
-	FailCount   int       // Track consecutive failures
-	LastChecked time.Time // Last time the proxy was health checked
-	IsWorking   bool      // Flag to indicate if proxy is working
-	Type        ProxyType // Type of proxy (HTTP, SOCKS5)
-}
-
+// ProxyManager quản lý danh sách proxy
 type ProxyManager struct {
 	proxies       []*Proxy
+	maxRetries    int
+	failThreshold int
 	mu            sync.RWMutex
 	used          map[string]time.Time
-	testURL       string        // URL used for testing proxies
-	maxRetries    int           // Maximum number of retries with different proxies
-	maxFails      int           // Maximum allowed consecutive failures
-	checkInterval time.Duration // Interval for health checks
-	rand          *rand.Rand    // Sử dụng rand riêng để tránh xung đột
+	testURL       string
+	checkInterval time.Duration
+	rand          *rand.Rand
 }
 
 func NewProxyManager() *ProxyManager {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &ProxyManager{
 		proxies:       make([]*Proxy, 0),
-		used:          make(map[string]time.Time),
-		testURL:       "http://ip4.me/api", // Default test URL
 		maxRetries:    3,
-		maxFails:      5,
+		failThreshold: 5,
+		used:          make(map[string]time.Time),
+		testURL:       "http://ip4.me/api",
 		checkInterval: 5 * time.Minute,
 		rand:          r,
+	}
+}
+
+func (pm *ProxyManager) AddProxy(proxy *Proxy) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	// Kiểm tra xem proxy đã tồn tại chưa
+	for _, p := range pm.proxies {
+		if p.URL == proxy.URL {
+			return
+		}
+	}
+
+	pm.proxies = append(pm.proxies, proxy)
+}
+
+func (pm *ProxyManager) GetRandomProxy() *Proxy {
+	// Lấy proxy mới từ API
+	proxy, err := GetProxyForRequest(ProxyTypeHTTP)
+	if err != nil {
+		return nil
+	}
+	return proxy
+}
+
+func (pm *ProxyManager) MarkProxySuccess(proxy *Proxy) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	for _, p := range pm.proxies {
+		if p.URL == proxy.URL {
+			p.FailCount = 0
+			p.IsWorking = true
+			return
+		}
+	}
+}
+
+func (pm *ProxyManager) MarkProxyFailure(proxy *Proxy) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	for _, p := range pm.proxies {
+		if p.URL == proxy.URL {
+			p.FailCount++
+			p.IsWorking = false
+			return
+		}
 	}
 }
 
@@ -65,7 +104,7 @@ func (pm *ProxyManager) SetMaxRetries(retries int) {
 func (pm *ProxyManager) SetMaxFails(fails int) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	pm.maxFails = fails
+	pm.failThreshold = fails
 }
 
 // SetCheckInterval sets the interval for health checks
@@ -195,7 +234,7 @@ func (pm *ProxyManager) cleanupFailedProxies() {
 
 	var workingProxies []*Proxy
 	for _, proxy := range pm.proxies {
-		if proxy.FailCount < pm.maxFails {
+		if proxy.FailCount < pm.failThreshold {
 			workingProxies = append(workingProxies, proxy)
 		} else {
 			logger.Info("Removing failed proxy: %s (failed %d times)", proxy.URL, proxy.FailCount)
@@ -350,32 +389,36 @@ func splitProxyLine(line string) []string {
 	return parts
 }
 
-// GetRandomProxy trả về một proxy ngẫu nhiên
-func (pm *ProxyManager) GetRandomProxy() *Proxy {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	workingProxies := []*Proxy{}
-	for _, proxy := range pm.proxies {
-		if proxy.IsWorking {
-			workingProxies = append(workingProxies, proxy)
-		}
-	}
-
-	if len(workingProxies) == 0 {
-		logger.Error("No working proxies available")
+// GetRandomProxyWithFilter trả về một proxy ngẫu nhiên phù hợp với bộ lọc
+func (pm *ProxyManager) GetRandomProxyWithFilter(selector ProxySelector) *Proxy {
+	// Lấy proxy mới từ API
+	proxy, err := GetProxyForRequest(ProxyTypeHTTP)
+	if err != nil {
 		return nil
 	}
 
-	// Chọn ngẫu nhiên một proxy
-	randomIndex := pm.rand.Intn(len(workingProxies))
-	selectedProxy := workingProxies[randomIndex]
+	// Kiểm tra xem proxy có phù hợp với bộ lọc không
+	if selector(proxy) {
+		return proxy
+	}
 
-	// Cập nhật thời gian sử dụng cuối cùng
-	pm.used[selectedProxy.URL] = time.Now()
+	return nil
+}
 
-	logger.Info("Selected random proxy: %s", selectedProxy.URL)
-	return selectedProxy
+// GetNextWorkingProxyWithFilter trả về proxy tiếp theo phù hợp với bộ lọc
+func (pm *ProxyManager) GetNextWorkingProxyWithFilter(excludeURL string, selector ProxySelector) *Proxy {
+	// Lấy proxy mới từ API
+	proxy, err := GetProxyForRequest(ProxyTypeHTTP)
+	if err != nil {
+		return nil
+	}
+
+	// Kiểm tra xem proxy có phù hợp với bộ lọc không
+	if proxy.URL != excludeURL && selector(proxy) {
+		return proxy
+	}
+
+	return nil
 }
 
 func (pm *ProxyManager) GetProxyCount() int {
@@ -384,109 +427,5 @@ func (pm *ProxyManager) GetProxyCount() int {
 	return len(pm.proxies)
 }
 
-// AddProxy thêm một proxy vào manager
-func (pm *ProxyManager) AddProxy(proxy *Proxy) {
-	// Nếu đã tồn tại proxy với URL này, cập nhật thay vì thêm mới
-	for i, p := range pm.proxies {
-		if p.URL == proxy.URL {
-			pm.proxies[i] = proxy
-			return
-		}
-	}
-
-	// Thêm proxy mới
-	pm.proxies = append(pm.proxies, proxy)
-}
-
 // ProxySelector định nghĩa hàm lọc proxy theo tiêu chí
 type ProxySelector func(*Proxy) bool
-
-// GetRandomProxyWithFilter trả về một proxy ngẫu nhiên phù hợp với bộ lọc
-func (pm *ProxyManager) GetRandomProxyWithFilter(selector ProxySelector) *Proxy {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	if len(pm.proxies) == 0 {
-		return nil
-	}
-
-	// Lọc proxy phù hợp
-	var eligibleProxies []*Proxy
-	for _, proxy := range pm.proxies {
-		if proxy.IsWorking && selector(proxy) {
-			eligibleProxies = append(eligibleProxies, proxy)
-		}
-	}
-
-	if len(eligibleProxies) == 0 {
-		return nil
-	}
-
-	// Chọn một proxy ngẫu nhiên
-	randomIndex := pm.rand.Intn(len(eligibleProxies))
-	selectedProxy := eligibleProxies[randomIndex]
-
-	// Cập nhật thời gian sử dụng
-	pm.used[selectedProxy.URL] = time.Now()
-
-	logger.Info("Selected random proxy: %s", selectedProxy.URL)
-	return selectedProxy
-}
-
-// GetNextWorkingProxyWithFilter trả về proxy tiếp theo phù hợp với bộ lọc
-func (pm *ProxyManager) GetNextWorkingProxyWithFilter(excludeURL string, selector ProxySelector) *Proxy {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	if len(pm.proxies) == 0 {
-		return nil
-	}
-
-	// Tìm proxy đang hoạt động, chưa được sử dụng hoặc đã lâu không sử dụng
-	var selectedProxy *Proxy
-	var oldestUsedTime time.Time
-	first := true
-
-	for _, proxy := range pm.proxies {
-		// Bỏ qua proxy bị loại trừ, proxy không hoạt động và proxy không phù hợp với bộ lọc
-		if proxy.URL == excludeURL || !proxy.IsWorking || !selector(proxy) {
-			continue
-		}
-
-		lastUsed, exists := pm.used[proxy.URL]
-		if !exists {
-			// Nếu proxy chưa từng được sử dụng, chọn ngay lập tức
-			selectedProxy = proxy
-			break
-		}
-
-		if first || lastUsed.Before(oldestUsedTime) {
-			oldestUsedTime = lastUsed
-			selectedProxy = proxy
-			first = false
-		}
-	}
-
-	if selectedProxy != nil {
-		// Cập nhật thời gian sử dụng
-		pm.used[selectedProxy.URL] = time.Now()
-		logger.Info("Selected next proxy: %s", selectedProxy.URL)
-	}
-
-	return selectedProxy
-}
-
-// MarkProxySuccess đánh dấu proxy thành công
-func (pm *ProxyManager) MarkProxySuccess(successProxy *Proxy) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	for _, proxy := range pm.proxies {
-		if proxy.URL == successProxy.URL {
-			proxy.IsWorking = true
-			proxy.FailCount = 0
-			logger.Info("Marked proxy as successful: %s", proxy.URL)
-			break
-		}
-	}
-}

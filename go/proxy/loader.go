@@ -9,29 +9,14 @@ import (
 	"time"
 )
 
-// ProxyType định nghĩa loại proxy
-type ProxyType string
-
-const (
-	ProxyTypeHTTP    ProxyType = "http"
-	ProxyTypeSOCKS5  ProxyType = "socks5"
-	ProxyTypeUnknown ProxyType = "unknown"
-)
-
 // LoadProxiesFromMultipleFiles tải proxy từ nhiều file
 func LoadProxiesFromMultipleFiles(httpFile, socks5File string, pm *ProxyManager) error {
-	// Tải các proxy HTTP
-	if httpFile != "" {
-		if err := LoadProxiesWithType(httpFile, ProxyTypeHTTP, pm); err != nil {
-			log.Printf("[WARN] Error loading HTTP proxies: %v", err)
-		}
+	if err := LoadProxiesWithType(httpFile, ProxyTypeHTTP, pm); err != nil {
+		return fmt.Errorf("failed to load HTTP proxies: %v", err)
 	}
 
-	// Tải các proxy SOCKS5
-	if socks5File != "" {
-		if err := LoadProxiesWithType(socks5File, ProxyTypeSOCKS5, pm); err != nil {
-			log.Printf("[WARN] Error loading SOCKS5 proxies: %v", err)
-		}
+	if err := LoadProxiesWithType(socks5File, ProxyTypeSOCKS5, pm); err != nil {
+		return fmt.Errorf("failed to load SOCKS5 proxies: %v", err)
 	}
 
 	// Kiểm tra xem có proxy nào được tải không
@@ -51,52 +36,24 @@ func LoadProxies(filename string, pm *ProxyManager) error {
 func LoadProxiesWithType(filename string, proxyType ProxyType, pm *ProxyManager) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("error opening proxy file %s: %v", filename, err)
+		return fmt.Errorf("failed to open proxy list file: %v", err)
 	}
 	defer file.Close()
 
-	var proxies []*Proxy
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue // Bỏ qua dòng trống và comment
-		}
-
-		// Parse proxy URL dựa vào định dạng
-		proxy, err := ParseProxy(line)
-		if err != nil {
-			log.Printf("[WARN] Invalid proxy format in %s: %s, error: %v", filename, line, err)
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}
 
-		// Gán type cho proxy
-		proxy.Type = proxyType
-		proxy.IsWorking = true // Giả định hoạt động ban đầu
-
-		// Đảm bảo URL có prefix đúng với loại proxy
-		if !strings.Contains(proxy.URL, "://") {
-			if proxyType == ProxyTypeSOCKS5 {
-				proxy.URL = "socks5://" + proxy.URL
-			} else {
-				proxy.URL = "http://" + proxy.URL
-			}
+		proxy := &Proxy{
+			URL:  line,
+			Type: proxyType,
 		}
-
-		proxies = append(proxies, proxy)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading proxy file %s: %v", filename, err)
-	}
-
-	pm.mu.Lock()
-	for _, proxy := range proxies {
 		pm.AddProxy(proxy)
 	}
-	pm.mu.Unlock()
 
-	log.Printf("[INFO] Loaded %d %s proxies from %s", len(proxies), proxyType, filename)
 	return nil
 }
 

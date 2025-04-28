@@ -5,9 +5,10 @@ const PROXY_API_URL = 'https://proxyxoay.org/api/get.php?key=';
 
 class ProxyService {
   private timers: Map<string, NodeJS.Timeout> = new Map();
+  private isCancelled: Map<string, boolean> = new Map();
+  private isFetching: Map<string, boolean> = new Map();
+  private processing: Map<string, boolean> = new Map();
   private isAutoRunning: boolean;
-  private nextRunTimes: Map<string, number> = new Map();
-  private isProcessing: Map<string, boolean> = new Map();
 
   constructor() {
     this.isAutoRunning = dbService.getAutoRunStatus();
@@ -18,152 +19,159 @@ class ProxyService {
 
   private log(key: KeyResponse | null, message: string, data?: any) {
     const now = new Date().toISOString();
-    const keyInfo = key ? `Key ${key.key}: ` : '';
-    console.log(`[${now}] ${keyInfo}${message}`, data ? JSON.stringify(data, null, 2) : '');
+    const keyInfo = key ? `Key ${key.key}` : '';
+    const color = this.getLogColor(message);
+    console.log(`[${keyInfo}] ${color}${message}\x1b[0m`, data ? JSON.stringify(data, null, 2) : '');
+  }
+
+  private getLogColor(message: string): string {
+    if (message.includes('Fetch completed')) return '\x1b[32m';
+    if (message.includes('Fetch failed')) return '\x1b[31m';
+    if (message.includes('Timer scheduled')) return '\x1b[36m';
+    if (message.includes('Timer aborted')) return '\x1b[33m';
+    if (message.includes('Starting fetch')) return '\x1b[35m';
+    return '\x1b[37m';
   }
 
   private async initializeTimers() {
     if (!this.isAutoRunning) return;
-    
-    // Clear existing timers
-    this.timers.forEach((_, keyId) => this.stopTimer(keyId));
-    this.timers.clear();
-    this.nextRunTimes.clear();
-    this.isProcessing.clear();
-    
-    // Start new timers
+    this.stopAllTimers();
+
     const keys = dbService.getKeys();
-    keys.forEach(key => {
+    for (const key of keys) {
       if (key.isActive) {
-        this.startTimer(key);
+        const freshKey = dbService.getKeyById(key.id);
+        if (!freshKey) continue;
+
+        this.startTimer(freshKey);
       }
-    });
+    }
   }
 
-  private async fetchProxyData(key: KeyResponse): Promise<void> {
-    if (!this.isAutoRunning) {
-      this.log(key, 'Auto run is disabled, stopping fetch immediately');
-      this.stopTimer(key.id);
-      return;
+  private async fetchProxyData(key: KeyResponse): Promise<number> {
+    if (!this.isAutoRunning || this.isCancelled.get(key.id) || this.isFetching.get(key.id) || this.processing.get(key.id)) {
+      this.log(key, 'Fetch aborted due to auto-run disabled, timer cancelled, fetch already in progress, or processing lock');
+      return 0;
     }
 
-    const now = Date.now();
-    const nextRun = this.nextRunTimes.get(key.id);
-
-    // Kiểm tra thời gian chạy
-    if (nextRun && now < nextRun) {
-      this.log(key, `Skipping fetch, next run at ${new Date(nextRun).toISOString()}`);
-      return;
-    }
-
-    // Kiểm tra xem có đang xử lý không
-    if (this.isProcessing.get(key.id)) {
-      this.log(key, 'Already processing, skipping this run');
-      return;
-    }
-
-    // Đánh dấu đang xử lý
-    this.isProcessing.set(key.id, true);
-    this.log(key, 'Starting fetch');
+    this.isFetching.set(key.id, true);
+    this.processing.set(key.id, true);
     const startTime = Date.now();
 
     try {
-      // Kiểm tra lại auto run trước khi fetch
-      if (!this.isAutoRunning) {
-        this.log(key, 'Auto run disabled during fetch, stopping immediately');
-        this.stopTimer(key.id);
-        return;
+      const response = await fetch(PROXY_API_URL + key.key);
+      if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
+        this.log(key, 'Fetch aborted during fetch due to auto-run disabled');
+        return 0;
       }
 
-      const response = await fetch(PROXY_API_URL + key.key);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      
-      // Kiểm tra lại auto run trước khi xử lý response
-      if (!this.isAutoRunning) {
-        this.log(key, 'Auto run disabled during response processing, stopping immediately');
-        this.stopTimer(key.id);
-        return;
-      }
-      
+
       const data = await response.json() as ProxyData;
-      
-      // Cập nhật key với dữ liệu mới
+
+      if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
+        this.log(key, 'Fetch aborted after fetch but before update');
+        return 0;
+      }
+
       const updatedKey: KeyResponse = {
         ...key,
         proxyData: data,
         lastRotatedAt: new Date().toISOString()
       };
+
       dbService.updateKey(updatedKey);
 
-      // Chỉ cập nhật thời gian chạy tiếp theo sau khi hoàn thành thành công
-      const nextRunTime = now + (key.rotationInterval * 1000);
-      this.nextRunTimes.set(key.id, nextRunTime);
+      const fetchTime = Date.now() - startTime;
+      this.log(key, 'Fetch completed fetchTime: ' + `${fetchTime}ms`);
+      return fetchTime;
 
-      this.log(key, 'Fetch completed', {
-        fetchTime: `${Date.now() - startTime}ms`,
-        nextRun: new Date(nextRunTime).toISOString(),
-        rotationInterval: key.rotationInterval
-      });
     } catch (error) {
       console.error(`Error fetching proxy data for key ${key.id}:`, error);
       this.log(key, 'Fetch failed', {
         error: error instanceof Error ? error.message : 'Unknown error',
         fetchTime: `${Date.now() - startTime}ms`
       });
+      return 0;
     } finally {
-      this.isProcessing.set(key.id, false);
+      this.isFetching.delete(key.id);
+      this.processing.delete(key.id);
     }
   }
 
   private startTimer(key: KeyResponse) {
+    if (this.processing.get(key.id)) {
+      this.log(key, 'StartTimer skipped due to processing lock');
+      return;
+    }
+
+    const delay = key.rotationInterval * 1000;
+    this.startTimerWithDelay(key, delay);
+  }
+
+  private startTimerWithDelay(key: KeyResponse, delay: number) {
     if (!this.isAutoRunning) {
-      this.log(key, 'Auto run is disabled, stopping timer immediately');
       this.stopTimer(key.id);
       return;
     }
-    
-    // Stop existing timer if any
+
     this.stopTimer(key.id);
-    
-    // Set thời gian chạy tiếp theo dựa trên thời điểm hiện tại
-    const now = Date.now();
-    const nextRunTime = now + (key.rotationInterval * 1000);
-    this.nextRunTimes.set(key.id, nextRunTime);
-    
-    this.log(key, 'Timer started', {
-      nextRun: new Date(nextRunTime).toISOString(),
-      rotationInterval: key.rotationInterval
-    });
-    
-    // Start new timer với interval ngắn hơn để kiểm tra chính xác thời điểm
-    const timer = setInterval(async () => {
-      if (!this.isAutoRunning) {
-        this.log(key, 'Auto run disabled, stopping timer immediately');
-        this.stopTimer(key.id);
+    this.isCancelled.set(key.id, false);
+
+    this.log(key, 'Timer scheduled nextRun: ' + `${(delay / 1000).toFixed(1)}s`);
+
+    const timer = setTimeout(async () => {
+      this.timers.delete(key.id); // Xóa timer ngay khi bắt đầu fetch để chống trùng
+
+      if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
+        this.log(key, 'Timer aborted before fetch');
         return;
       }
 
-      const currentTime = Date.now();
-      const nextRun = this.nextRunTimes.get(key.id);
-      
-      // Chỉ chạy khi đã đến thời điểm và không đang xử lý
-      if (nextRun && currentTime >= nextRun && !this.isProcessing.get(key.id)) {
-        await this.fetchProxyData(key);
+      let freshKey = dbService.getKeyById(key.id);
+      if (!freshKey || !freshKey.isActive) {
+        this.log(key, 'Key not found or inactive, stopping timer');
+        this.stopKey(key.id);
+        return;
       }
-    }, 1000); // Kiểm tra mỗi giây
-    
+
+      if (!this.isAutoRunning || this.isCancelled.get(key.id)) {
+        this.log(key, 'AutoRun stopped during processing, abort fetch');
+        return;
+      }
+
+      const fetchTime = await this.fetchProxyData(freshKey);
+
+      freshKey = dbService.getKeyById(key.id);
+      if (freshKey && freshKey.isActive) {
+        const nextDelay = freshKey.rotationInterval * 1000 + fetchTime;
+        this.startTimerWithDelay(freshKey, nextDelay);
+      }
+
+    }, delay);
+
     this.timers.set(key.id, timer);
   }
 
   private stopTimer(keyId: string) {
     const timer = this.timers.get(keyId);
     if (timer) {
-      this.log(null, `Stopping timer for key ${keyId} immediately`);
-      clearInterval(timer);
+      clearTimeout(timer);
       this.timers.delete(keyId);
-      this.nextRunTimes.delete(keyId);
-      this.isProcessing.delete(keyId);
     }
+    this.isCancelled.delete(keyId);
+    this.isFetching.delete(keyId);
+    this.processing.delete(keyId);
+  }
+
+  private stopAllTimers() {
+    this.timers.forEach((timer, keyId) => {
+      clearTimeout(timer);
+      this.isCancelled.delete(keyId);
+      this.isFetching.delete(keyId);
+      this.processing.delete(keyId);
+    });
+    this.timers.clear();
   }
 
   public startKey(key: KeyResponse) {
@@ -175,16 +183,16 @@ class ProxyService {
   public stopKey(keyId: string) {
     this.log(null, `Stopping key ${keyId}`);
     this.stopTimer(keyId);
-    this.nextRunTimes.delete(keyId);
-    this.isProcessing.delete(keyId);
   }
 
   public updateKey(key: KeyResponse) {
-    this.log(key, `Updating key, isActive: ${key.isActive}, isAutoRunning: ${this.isAutoRunning}`);
-    if (key.isActive && this.isAutoRunning) {
-      this.startTimer(key);
-    } else {
-      this.stopKey(key.id);
+    this.stopKey(key.id);
+
+    if (this.isAutoRunning) {
+      const freshKey = dbService.getKeyById(key.id);
+      if (freshKey && freshKey.isActive) {
+        this.startTimer(freshKey);
+      }
     }
   }
 
@@ -192,28 +200,16 @@ class ProxyService {
     const oldStatus = this.isAutoRunning;
     this.isAutoRunning = !this.isAutoRunning;
     dbService.setAutoRunStatus(this.isAutoRunning);
-    
+
     this.log(null, `Auto run status changed: ${oldStatus} -> ${this.isAutoRunning}`);
-    
+
     if (this.isAutoRunning) {
-      this.log(null, 'Initializing timers for all active keys');
       this.initializeTimers();
     } else {
-      this.log(null, 'Stopping all timers and cleaning up data immediately');
-      // Dừng tất cả các timer và xóa dữ liệu ngay lập tức
-      this.timers.forEach((timer, keyId) => {
-        this.log(null, `Stopping timer for key ${keyId} immediately`);
-        clearInterval(timer);
-        this.timers.delete(keyId);
-        this.nextRunTimes.delete(keyId);
-        this.isProcessing.delete(keyId);
-      });
-      this.timers.clear();
-      this.nextRunTimes.clear();
-      this.isProcessing.clear();
-      this.log(null, 'All timers stopped and data cleaned up');
+      this.stopAllTimers();
+      this.log(null, 'All timers stopped');
     }
-    
+
     return this.isAutoRunning;
   }
 
@@ -227,4 +223,4 @@ class ProxyService {
   }
 }
 
-export const proxyService = new ProxyService(); 
+export const proxyService = new ProxyService();
