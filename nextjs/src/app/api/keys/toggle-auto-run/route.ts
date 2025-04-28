@@ -1,0 +1,32 @@
+import { NextResponse } from 'next/server';
+import { proxyService } from '@server/services/proxyService';
+import { dbService } from '@server/database';
+import { AutoRunResponse } from '@/types/api';
+
+export async function POST() {
+  try {
+    // Get current status
+    const currentStatus = proxyService.getAutoRunStatus();
+    
+    // Toggle auto run status
+    const newStatus = proxyService.toggleAutoRun();
+    
+    // Save to database
+    dbService.setAutoRunStatus(newStatus);
+    
+    // Return current status
+    const response: AutoRunResponse = {
+      isAutoRunning: newStatus,
+      message: `Auto run ${newStatus ? 'enabled' : 'disabled'} successfully`,
+      previousStatus: currentStatus
+    };
+    
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error('Failed to toggle auto run:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to toggle auto run' },
+      { status: 500 }
+    );
+  }
+} 

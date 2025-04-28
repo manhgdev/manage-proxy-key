@@ -1,0 +1,37 @@
+{
+  "name": "manage-proxy-key",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "lsof -i :3000 -t | xargs kill -9 || true && next dev",
+    "build": "next build",
+    "start": "next start",
+    "start:prod": "NODE_ENV=production next start -p 3000",
+    "lint": "next lint",
+    "kill": "lsof -i :3000 -t | xargs kill -9",
+    "proxy": "bun run src/server/intermediary/index.ts",
+    "dev:proxy": "nodemon --exec 'bun run' src/server/intermediary/index.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "next": "14.1.0",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/http-proxy": "^1.17.16",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/tunnel": "^0.0.7",
+    "autoprefixer": "^10.0.1",
+    "eslint": "^8",
+    "eslint-config-next": "14.1.0",
+    "nodemon": "^3.1.10",
+    "postcss": "^8",
+    "tailwindcss": "^3.3.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  }
+}
