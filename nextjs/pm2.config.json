@@ -1,6 +1,6 @@
 {
     "apps": [{
-        "name": "proxy-key-manager-nextjs",
+        "name": "nextjs-proxy-key-manager",
         "script": "bun",
         "args": "run start:prod",
         "env": {
