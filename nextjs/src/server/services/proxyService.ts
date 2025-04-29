@@ -123,16 +123,26 @@ export class ProxyService {
     const startTime = Date.now();
 
     try {
+      let updatedKey: KeyResponse;
       const response = await fetch(PROXY_API_URL + key.key);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const data = await response.json() as ProxyData;
 
-      const updatedKey: KeyResponse = {
-        ...key,
-        proxyData: data,
-        lastRotatedAt: new Date().toISOString()
-      };
+      if (data.status === 101) {
+        updatedKey = {
+          ...key,
+          proxyData: key.proxyData
+            ? { ...key.proxyData, message: data.message }
+            : data
+        };
+      } else {
+        updatedKey = {
+          ...key,
+          proxyData: data,
+          lastRotatedAt: new Date().toISOString()
+        };
+      }
 
       await dbService.updateKey(updatedKey);
 
