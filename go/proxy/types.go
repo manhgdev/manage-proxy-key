@@ -19,6 +19,7 @@ type Proxy struct {
 	URL         string
 	Username    string
 	Password    string
+	AuthHeader  string
 	LastUsed    time.Time
 	FailCount   int
 	LastChecked time.Time

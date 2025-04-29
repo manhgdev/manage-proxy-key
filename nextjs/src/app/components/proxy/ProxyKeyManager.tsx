@@ -6,6 +6,7 @@ import Toast from '@components/common/Toast';
 import Pagination from '../common/Pagination';
 import SearchInput from '../common/SearchInput';
 import ProxyTable from './ProxyTable';
+import DarkMode from '@components/common/DarkMode';
 
 interface ToastMessage {
   message: string;
@@ -123,8 +124,12 @@ export default function ProxyKeyManager() {
   }, [currentPage, pageSize, searchQuery]);
 
   const handleAddKey = async () => {
-    if (!newKey.key && uploadedKeys.length === 0) {
-      showToast('Please fill in key field or upload keys from file', 'error');
+    const keysToAdd = newKey.key.split('\n')
+      .map(key => key.trim())
+      .filter(key => key.length > 0);
+
+    if (keysToAdd.length === 0 && uploadedKeys.length === 0) {
+      showToast('Please enter keys or upload file', 'error');
       return;
     }
 
@@ -132,8 +137,8 @@ export default function ProxyKeyManager() {
     let errorCount = 0;
     let errorMessage = '';
 
-    // Nếu có key đơn lẻ
-    if (newKey.key) {
+    // Xử lý keys từ textarea
+    for (const key of keysToAdd) {
       try {
         const response = await fetch('/api/keys', {
           method: 'POST',
@@ -141,7 +146,7 @@ export default function ProxyKeyManager() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            key: newKey.key,
+            key: key,
             rotationInterval: newKey.rotationInterval,
             isActive: true
           }),
@@ -153,12 +158,12 @@ export default function ProxyKeyManager() {
         } else {
           errorCount++;
           errorMessage = data.error || 'Failed to add key';
-          console.error(`Failed to add key ${newKey.key}:`, data.error);
+          console.error(`Failed to add key ${key}:`, data.error);
         }
       } catch (error) {
         errorCount++;
         errorMessage = 'Failed to add key';
-        console.error(`Failed to add key ${newKey.key}:`, error);
+        console.error(`Failed to add key ${key}:`, error);
       }
     }
 
@@ -526,7 +531,7 @@ export default function ProxyKeyManager() {
   }
 
   return (
-    <main className="min-h-screen p-4 md:p-8 bg-gray-100">
+    <main className="min-h-screen p-4 md:p-8 bg-gray-100 dark:bg-gray-900">
       {toast && (
         <Toast
           message={toast.message}
@@ -535,27 +540,52 @@ export default function ProxyKeyManager() {
         />
       )}
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-          <h1 className="text-2xl md:text-3xl font-bold">Proxy Key Manager</h1>
-          <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4 w-full md:w-auto">
-            <SearchInput 
-              onSearch={handleSearch}
-              placeholder="Search keys..."
-            />
-            <button
-              onClick={handleToggleAutoRun}
-              className={`px-4 py-2 rounded transition-colors duration-200 ${
-                isAutoRunning ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500 hover:bg-gray-600'
-              } text-white w-full md:w-auto`}
-            >
-              Auto Run: {isAutoRunning ? 'ON' : 'OFF'}
-            </button>
-            <button
-              onClick={handleAddNew}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 w-full md:w-auto"
-            >
-              + Add New Key
-            </button>
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-8">Proxy Key Manager</h1>
+
+        <div className="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">API Endpoints</h2>
+          <div className="flex flex-col space-y-2">
+            <div className="flex items-center">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2">proxy-random:</span>
+              <a 
+                href="/api/proxy/random" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-mono"
+              >
+                /api/proxy/random
+              </a>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Click the link to open the API based on server IP or configured domain
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col space-y-4 mb-4">
+          <div className="flex justify-between items-center">
+            <div className="flex-1">
+              <SearchInput 
+                onSearch={handleSearch}
+                placeholder="Search keys..."
+              />
+            </div>
+            <div className="flex gap-4 ml-4">
+              <button
+                onClick={handleToggleAutoRun}
+                className={`px-4 py-2 rounded transition-colors duration-200 ${
+                  isAutoRunning ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500 hover:bg-gray-600'
+                } text-white`}
+              >
+                Auto Run: {isAutoRunning ? 'ON' : 'OFF'}
+              </button>
+              <button
+                onClick={handleAddNew}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                + Add New Key
+              </button>
+            </div>
           </div>
         </div>
 
@@ -584,12 +614,12 @@ export default function ProxyKeyManager() {
 
         {isEditModalOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl w-full mx-4">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-2xl w-full mx-4">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">{editingId ? 'Edit Key' : 'Add New Key'}</h2>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{editingId ? 'Edit Key' : 'Add New Key'}</h2>
                 <button
                   onClick={handleCancel}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -598,53 +628,74 @@ export default function ProxyKeyManager() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Key</label>
-                  <input
-                    type="text"
-                    value={newKey.key}
-                    onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="Enter key..."
-                  />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Key</label>
+                  {editingId ? (
+                    <input
+                      type="text"
+                      value={newKey.key}
+                      onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
+                      className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 
+                               shadow-sm focus:border-blue-500 focus:ring-blue-500
+                               bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Enter key"
+                    />
+                  ) : (
+                    <>
+                      <textarea
+                        value={newKey.key}
+                        onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
+                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 
+                                 shadow-sm focus:border-blue-500 focus:ring-blue-500
+                                 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="Enter keys, one per line..."
+                        rows={4}
+                      />
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">One key per line</p>
+                    </>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Rotation Interval (seconds)</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Rotation Interval (seconds)</label>
                   <input
                     type="number"
                     value={newKey.rotationInterval}
                     onChange={(e) => setNewKey({ ...newKey, rotationInterval: parseInt(e.target.value) || 60 })}
                     min="1"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 
+                             shadow-sm focus:border-blue-500 focus:ring-blue-500
+                             bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   />
                 </div>
               </div>
               {!editingId && (
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700">Upload Keys from TXT</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Upload Keys from TXT</label>
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept=".txt"
                     onChange={handleFileUpload}
-                    className="mt-1 block w-full text-sm text-gray-500
+                    className="mt-1 block w-full text-sm text-gray-500 dark:text-gray-400
                       file:mr-4 file:py-2 file:px-4
                       file:rounded-md file:border-0
                       file:text-sm file:font-semibold
                       file:bg-blue-50 file:text-blue-700
-                      hover:file:bg-blue-100"
+                      hover:file:bg-blue-100
+                      dark:file:bg-gray-700 dark:file:text-blue-300
+                      dark:hover:file:bg-gray-600"
                   />
-                  <p className="mt-1 text-xs text-gray-500">One key per line</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">One key per line</p>
                 </div>
               )}
               {uploadedKeys.length > 0 && (
                 <div className="mt-4">
                   <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-sm font-medium text-gray-700">Keys to add ({uploadedKeys.length})</h3>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Keys to add ({uploadedKeys.length})</h3>
                   </div>
-                  <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded">
+                  <div className="max-h-40 overflow-y-auto bg-gray-50 dark:bg-gray-700 p-2 rounded">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {uploadedKeys.map((key, index) => (
-                        <div key={index} className="text-sm text-gray-600 bg-white p-2 rounded border">
+                        <div key={index} className="text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 p-2 rounded border dark:border-gray-600">
                           {key}
                         </div>
                       ))}
@@ -672,35 +723,37 @@ export default function ProxyKeyManager() {
 
         {isBulkEditModalOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
-              <h2 className="text-xl font-semibold mb-4">Update Rotation Interval</h2>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
+              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Update Rotation Interval</h2>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Rotation Interval (seconds)
                 </label>
-                    <input
+                <input
                   type="number"
                   value={bulkRotationInterval}
                   onChange={(e) => setBulkRotationInterval(parseInt(e.target.value) || 60)}
                   min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+                           focus:outline-none focus:ring-2 focus:ring-blue-500
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
               </div>
               <div className="flex justify-end space-x-2">
-                        <button
+                <button
                   onClick={() => setIsBulkEditModalOpen(false)}
                   className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-                        >
+                >
                   Cancel
-                        </button>
-                        <button
+                </button>
+                <button
                   onClick={handleBulkUpdateRotationInterval}
                   className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        >
+                >
                   Update
-                        </button>
-                      </div>
-                      </div>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -726,7 +779,12 @@ export default function ProxyKeyManager() {
             onPageSizeChange={setPageSize}
           />
         </div>
+
+        <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          © manhgdev - {new Date().getFullYear()}
+        </div>
       </div>
+      <DarkMode />
     </main>
   );
 } 

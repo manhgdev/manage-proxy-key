@@ -1,50 +1,48 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 
 interface SearchInputProps {
-  onSearch: (value: string) => void;
+  onSearch: (query: string) => void;
   placeholder?: string;
-  className?: string;
 }
 
-export default function SearchInput({ 
-  onSearch, 
-  placeholder = 'Search...',
-  className = ''
-}: SearchInputProps) {
-  const [value, setValue] = useState('');
+export default function SearchInput({ onSearch, placeholder = 'Search...' }: SearchInputProps) {
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setValue(e.target.value);
-  };
+  const handleSearch = useCallback(() => {
+    onSearch(searchQuery);
+  }, [searchQuery, onSearch]);
 
-  const handleSearch = () => {
-    onSearch(value);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       handleSearch();
     }
   };
 
   return (
-    <div className="relative w-full md:w-auto">
+    <div className="relative">
       <input
         type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        value={value}
-        onChange={handleChange}
-        onKeyPress={handleKeyPress}
-        className={`w-full px-4 py-2 rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500 pr-10 text-sm md:text-base ${className}`}
+        className="w-full px-4 py-2 pl-10 pr-12 rounded-lg border border-gray-300 dark:border-gray-600 
+                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
       />
+      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      </div>
       <button
         onClick={handleSearch}
-        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-blue-500 p-1"
+        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
         </svg>
       </button>
     </div>

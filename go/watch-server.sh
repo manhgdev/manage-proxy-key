@@ -16,7 +16,7 @@ echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
 LAST_MODIFIED_TIME=0
 SERVER_PID=""
 RUN_TESTS=true  # Tùy chọn chạy test tự động
-PORT=8080       # Cổng mặc định
+PORT=8081       # Cổng mặc định
 
 # Xử lý tham số dòng lệnh
 for arg in "$@"; do
