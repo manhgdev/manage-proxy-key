@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { dbService } from '@server/database';
-import { proxyService } from '@server/services/proxyService';
 import { KeyResponse } from '@/types/api';
 
 // Chỉ export các hàm route handler
@@ -30,9 +29,8 @@ export async function GET() {
       ...randomKey,
       lastRotatedAt: new Date().toISOString()
     };
-    
-    // Sử dụng proxyService để cập nhật key
-    await proxyService.updateKey(updatedKey);
+
+    await dbService.updateKey(updatedKey);
 
     return NextResponse.json({
       proxyData: randomKey.proxyData,
