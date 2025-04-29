@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dbService } from '@server/database';
-import { proxyService } from '@server/services/proxyService';
+import { getProxyService } from '@server/services/proxyService';
 import { KeyResponse } from '@/types/api';
 
 export async function GET(request: Request) {
@@ -53,6 +53,7 @@ export async function POST(request: Request) {
     };
 
     await dbService.addKey(key);
+    const proxyService = await getProxyService();
     proxyService.startKey(key);
     return NextResponse.json(key);
   } catch (error) {
@@ -73,7 +74,8 @@ export async function PUT(request: Request) {
     };
 
     await dbService.updateKey(key);
-    proxyService.updateKey(key);
+    const proxyService = await getProxyService();
+    proxyService.freshTimerKey(key);
     return NextResponse.json(key);
   } catch (error) {
     console.error('Failed to update key:', error);
@@ -104,7 +106,10 @@ export async function DELETE(request: Request) {
       );
     }
 
+    const proxyService = await getProxyService();
+    proxyService.stopKey(key.id);
     await dbService.deleteKey(id);
+    
     return NextResponse.json({ message: 'Key deleted successfully' });
   } catch (error) {
     console.error('Failed to delete key:', error);

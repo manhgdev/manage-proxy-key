@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { AutoRunResponse } from '@/types/api';
-import { proxyService } from '@/server/services/proxyService';
+import { getProxyService } from '@/server/services/proxyService';
 
 export async function GET() {
   try {
+    const proxyService = await getProxyService();
     const isAutoRunning = proxyService.getAutoRunStatus();
 
     const response: AutoRunResponse = {

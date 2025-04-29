@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
-import { proxyService } from '@server/services/proxyService';
+import { getProxyService } from '@server/services/proxyService';
 import { dbService } from '@server/database';
 import { AutoRunResponse } from '@/types/api';
 
 export async function POST() {
   try {
+    const proxyService = await getProxyService();
+    
     // Get current status
     const currentStatus = proxyService.getAutoRunStatus();
     

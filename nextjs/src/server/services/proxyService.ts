@@ -14,39 +14,36 @@ export class ProxyService {
   private static isInitializing: boolean = false;
   private static currentProcessId: number | null = null;
   private static processLock: boolean = false;
+  private static initializePromise: Promise<void> | null = null;
 
   private constructor() {
     this.isAutoRunning = false;
     this.isInitialized = false;
   }
 
-  public static getInstance(): ProxyService {
+  public static async getInstance(): Promise<ProxyService> {
     if (!ProxyService.instance) {
-      ProxyService.instance = new ProxyService();
+      if (!ProxyService.isInitializing) {
+        ProxyService.isInitializing = true;
+        ProxyService.instance = new ProxyService();
+        ProxyService.initializePromise = ProxyService.instance.initialize();
+        await ProxyService.initializePromise;
+        ProxyService.isInitializing = false;
+      } else {
+        // Đợi cho đến khi instance được khởi tạo xong
+        while (!ProxyService.instance) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
     }
     return ProxyService.instance;
   }
 
-  private async acquireProcessLock(): Promise<boolean> {
-    if (ProxyService.processLock) {
-      return false;
-    }
-    ProxyService.processLock = true;
-    return true;
-  }
-
-  private releaseProcessLock() {
-    ProxyService.processLock = false;
-  }
-
-  public async initialize() {
-    if (this.isInitialized || ProxyService.isInitializing) return;
+  private async initialize() {
+    if (this.isInitialized) return;
     
-    ProxyService.isInitializing = true;
     try {
-      const dbAutoRunStatus = await dbService.getAutoRunStatus();
-      this.isAutoRunning = dbAutoRunStatus;
-      ProxyService.isAutoRunEnabled = dbAutoRunStatus;
+      await this._getAutoRunStatus();
 
       if (this.isAutoRunning) {
         if (ProxyService.currentProcessId && ProxyService.currentProcessId !== process.pid) {
@@ -61,9 +58,32 @@ export class ProxyService {
       this.isInitialized = true;
     } catch (error) {
       console.error('Failed to initialize:', error);
-    } finally {
-      ProxyService.isInitializing = false;
+      throw error;
     }
+  }
+
+  private async ensureInitialized() {
+    if (!this.isInitialized && ProxyService.initializePromise) {
+      await ProxyService.initializePromise;
+    }
+  }
+
+  public async _getAutoRunStatus() {
+    const dbAutoRunStatus = await dbService.getAutoRunStatus();
+    this.isAutoRunning = dbAutoRunStatus;
+    ProxyService.isAutoRunEnabled = dbAutoRunStatus;
+  }
+
+  private async acquireProcessLock(): Promise<boolean> {
+    if (ProxyService.processLock) {
+      return false;
+    }
+    ProxyService.processLock = true;
+    return true;
+  }
+
+  private releaseProcessLock() {
+    ProxyService.processLock = false;
   }
 
   private log(key: KeyResponse | null, message: string, data?: any) {
@@ -117,7 +137,7 @@ export class ProxyService {
       await dbService.updateKey(updatedKey);
 
       const fetchTime = Date.now() - startTime;
-      this.log(key, 'Fetch completed fetchTime: ' + `${fetchTime}ms`);
+      this.log(key, '🚀 Fetch completed: ' + `${fetchTime}ms`);
       return fetchTime;
 
     } catch (error) {
@@ -130,66 +150,71 @@ export class ProxyService {
     }
   }
 
-  private startTimer(key: KeyResponse) {
-    if (this.processing.get(key.id)) {
-      this.log(key, 'StartTimer skipped due to processing lock');
+  private async startTimer(dataKey: KeyResponse) {
+    if (this.processing.get(dataKey.id)) {
+      this.log(dataKey, 'StartTimer skipped due to processing lock');
       return;
     }
-    if (this.timers.has(key.id)) {
-      this.log(key, 'Timer already exists, skipping start');
+    if (this.timers.has(dataKey.id)) {
+      this.log(dataKey, 'Timer already exists, skipping start');
       return;
     }
-    this.startTimerWithDelay(key, key.rotationInterval * 1000);
+
+    if (!dataKey || !dataKey.isActive) {
+      this.log(dataKey, 'Key not found or inactive, stopping timer');
+      this.stopKey(dataKey.id);
+      return;
+    }
+    
+    const lastRotatedAt = new Date(dataKey.lastRotatedAt).getTime();
+    const intervalMs = dataKey.rotationInterval * 1000;
+    const now = Date.now();
+    
+    let nextDelay = intervalMs - (now - lastRotatedAt);
+    if (nextDelay < 0) nextDelay = 0;
+
+    this.startTimerWithDelay(dataKey, nextDelay);
   }
 
-  private startTimerWithDelay(key: KeyResponse, delay: number) {
+  private startTimerWithDelay(dataKey: KeyResponse, delay: number) {
     if (!this.isAutoRunning) {
-      this.stopTimer(key.id);
+      this.stopTimer(dataKey.id);
       return;
     }
 
-    this.stopTimer(key.id);
-
+    this.stopTimer(dataKey.id);
     
-
     const timer = setTimeout(async () => {
-      this.timers.delete(key.id);
+      this.timers.delete(dataKey.id);
 
-      if (!this.isAutoRunning || this.processing.get(key.id)) {
-        this.log(key, 'Timer aborted or already processing');
+      if (!this.isAutoRunning || this.processing.get(dataKey.id)) {
+        this.log(dataKey, 'Timer aborted or already processing');
         return;
       }
 
-      this.processing.set(key.id, true);
+      this.processing.set(dataKey.id, true);
 
       try {
-        const freshKey = await dbService.getKeyById(key.id);
-        if (!freshKey || !freshKey.isActive) {
-          this.log(key, 'Key not found or inactive, stopping timer');
-          this.stopKey(key.id);
+        if (!dataKey || !dataKey.isActive) {
+          this.log(dataKey, 'Key not found or inactive, stopping timer');
+          this.stopKey(dataKey.id);
           return;
         }
-        
-        const fetchTime = await this.fetchProxyData(freshKey);
 
-        const lastRotatedAt = new Date(freshKey.lastRotatedAt).getTime();
-        const intervalMs = freshKey.rotationInterval * 1000;
-        
+        const fetchTime = await this.fetchProxyData(dataKey);
+        const intervalMs = dataKey.rotationInterval * 1000;
+        let nextDelay = intervalMs + fetchTime;
 
-        let nextDelay = lastRotatedAt + intervalMs - Date.now() + fetchTime;
-        if (nextDelay < 0) nextDelay = 0;
-
-        this.log(key, 'Timer scheduled nextRun: ' + `${(nextDelay / 1000).toFixed(1)}s`);
-
-        this.startTimerWithDelay(freshKey, nextDelay);
+        this.log(dataKey, '🔄 Timer scheduled nextRun: ' + `${(nextDelay / 1000).toFixed(1)}s`);
+        this.startTimerWithDelay(dataKey, nextDelay);
       } catch (error) {
-        console.error(`Error in timer for key ${key.id}:`, error);
+        console.error(`Error in timer for key ${dataKey.id}:`, error);
       } finally {
-        this.processing.delete(key.id);
+        this.processing.delete(dataKey.id);
       }
     }, delay);
 
-    this.timers.set(key.id, timer);
+    this.timers.set(dataKey.id, timer);
   }
 
   private stopTimer(keyId: string) {
@@ -218,11 +243,17 @@ export class ProxyService {
   }
 
   public stopKey(keyId: string) {
-    this.log(null, `Stopping key ${keyId}`);
-    this.stopTimer(keyId);
+    this.log(null, `🛑 Stopping key ${keyId}`);
+    const timer = this.timers.get(keyId);
+    if (timer) {
+      clearTimeout(timer);
+      this.timers.delete(keyId);
+    }
+    this.processing.delete(keyId);
   }
 
-  public async updateKey(key: KeyResponse) {
+  public async freshTimerKey(key: KeyResponse) {
+    await this.ensureInitialized();
     this.stopKey(key.id);
     if (!this.isAutoRunning) return;
     
@@ -233,6 +264,7 @@ export class ProxyService {
   }
 
   public async toggleAutoRun() {
+    await this.ensureInitialized();
     if (!await this.acquireProcessLock()) {
       this.log(null, 'Another process is already running');
       return this.isAutoRunning;
@@ -259,8 +291,6 @@ export class ProxyService {
         await this.initializeTimers();
       } else {
         this.stopAllTimers();
-        this.timers.clear();
-        this.processing.clear();
         this.isInitialized = false;
         ProxyService.currentProcessId = null;
         this.log(null, 'All timers and processes stopped completely');
@@ -285,9 +315,17 @@ export class ProxyService {
   }
 
   public async applyRotationInterval(key: KeyResponse) {
+    await this.ensureInitialized();
     if (!this.isAutoRunning) return;
     this.startTimer(key);
   }
 }
 
-export const proxyService = ProxyService.getInstance();
+// Initialize singleton instance
+let proxyServiceInstance: ProxyService | null = null;
+export const getProxyService = async () => {
+  if (!proxyServiceInstance) {
+    proxyServiceInstance = await ProxyService.getInstance();
+  }
+  return proxyServiceInstance;
+};

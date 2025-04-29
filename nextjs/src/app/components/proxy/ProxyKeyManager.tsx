@@ -44,7 +44,7 @@ SearchInputComponent.displayName = 'SearchInput';
 
 export default function ProxyKeyManager() {
   const [proxyKeys, setProxyKeys] = useState<ProxyKey[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newKey, setNewKey] = useState({
     key: '',
@@ -93,71 +93,6 @@ export default function ProxyKeyManager() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (isAutoRunning) {
-      const checkAndRotate = async () => {
-        const now = Date.now();
-        const keysToRotate = proxyKeys.filter(key => {
-          if (!key.isActive) return false;
-          const lastRotated = new Date(key.lastRotatedAt).getTime();
-          const nextRotation = lastRotated + (key.rotationInterval * 1000);
-          return now >= nextRotation;
-        });
-
-        if (keysToRotate.length > 0) {
-          log('Keys to rotate:', keysToRotate.map(k => ({
-            key: k.key,
-            lastRotated: new Date(k.lastRotatedAt).toLocaleString(),
-            nextRotation: new Date(new Date(k.lastRotatedAt).getTime() + (k.rotationInterval * 1000)).toLocaleString()
-          })));
-
-          for (const key of keysToRotate) {
-            try {
-              const response = await fetch('/api/keys/apply', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ id: key.id }),
-              });
-              if (response.ok) {
-                const updatedKey = await response.json();
-                setProxyKeys(prevKeys => 
-                  prevKeys.map(k => k.id === key.id ? updatedKey : k)
-                );
-                log('Rotated key:', {
-                  key: key.key,
-                  lastRotated: new Date(updatedKey.lastRotatedAt).toLocaleString(),
-                  nextRotation: new Date(new Date(updatedKey.lastRotatedAt).getTime() + (updatedKey.rotationInterval * 1000)).toLocaleString()
-                });
-              }
-            } catch (error) {
-              console.error('Failed to rotate key:', error);
-            }
-          }
-        }
-      };
-
-      if (!intervalRef.current) {
-        checkAndRotate();
-        intervalRef.current = setInterval(checkAndRotate, 1000);
-        log('Auto run started');
-      }
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      log('Auto run stopped');
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-        log('Auto run cleaned up');
-      }
-    };
-  }, [isAutoRunning]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning') => {
     setToast({ message, type });
@@ -262,7 +197,7 @@ export default function ProxyKeyManager() {
     await fetchKeys();
     setNewKey({ key: '', rotationInterval: 60 });
     setUploadedKeys([]);
-    setIsAdding(false);
+    setIsEditModalOpen(false);
 
     if (successCount > 0) {
       showToast(`Added ${successCount} keys${errorCount > 0 ? `, ${errorCount} failed` : ''}`, 'success');
@@ -334,7 +269,7 @@ export default function ProxyKeyManager() {
       rotationInterval: proxyKey.rotationInterval,
     });
     setEditingId(proxyKey.id);
-    setIsAdding(true);
+    setIsEditModalOpen(true);
   };
 
   const handleSave = async () => {
@@ -368,7 +303,7 @@ export default function ProxyKeyManager() {
         await fetchKeys();
         setNewKey({ key: '', rotationInterval: 60 });
         setEditingId(null);
-        setIsAdding(false);
+        setIsEditModalOpen(false);
         showToast('Key updated successfully', 'success');
       } else {
         showToast(data.error || 'Failed to update key', 'error');
@@ -382,7 +317,7 @@ export default function ProxyKeyManager() {
   const handleCancel = () => {
     setNewKey({ key: '', rotationInterval: 60 });
     setEditingId(null);
-    setIsAdding(false);
+    setIsEditModalOpen(false);
     setUploadedKeys([]);
   };
 
@@ -576,6 +511,12 @@ export default function ProxyKeyManager() {
     setCurrentPage(1);
   };
 
+  const handleAddNew = () => {
+    setNewKey({ key: '', rotationInterval: 60 });
+    setEditingId(null);
+    setIsEditModalOpen(true);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -609,14 +550,12 @@ export default function ProxyKeyManager() {
             >
               Auto Run: {isAutoRunning ? 'ON' : 'OFF'}
             </button>
-            {!isAdding && (
-              <button
-                onClick={() => setIsAdding(true)}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 w-full md:w-auto"
-              >
-                + Add New Key
-              </button>
-            )}
+            <button
+              onClick={handleAddNew}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 w-full md:w-auto"
+            >
+              + Add New Key
+            </button>
           </div>
         </div>
 
@@ -643,75 +582,90 @@ export default function ProxyKeyManager() {
           </div>
         )}
 
-        {isAdding && (
-          <div className="mb-6 p-4 bg-white rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">{editingId ? 'Edit Key' : 'Add New Key'}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Key</label>
-                <input
-                  type="text"
-                  value={newKey.key}
-                  onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
+        {isEditModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">{editingId ? 'Edit Key' : 'Add New Key'}</h2>
+                <button
+                  onClick={handleCancel}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Rotation Interval (seconds)</label>
-                <input
-                  type="number"
-                  value={newKey.rotationInterval}
-                  onChange={(e) => setNewKey({ ...newKey, rotationInterval: parseInt(e.target.value) || 60 })}
-                  min="1"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Upload Keys from TXT</label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".txt"
-                  onChange={handleFileUpload}
-                  className="mt-1 block w-full text-sm text-gray-500
-                    file:mr-4 file:py-2 file:px-4
-                    file:rounded-md file:border-0
-                    file:text-sm file:font-semibold
-                    file:bg-blue-50 file:text-blue-700
-                    hover:file:bg-blue-100"
-                />
-                <p className="mt-1 text-xs text-gray-500">One key per line</p>
-              </div>
-            </div>
-            {uploadedKeys.length > 0 && (
-              <div className="mt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-sm font-medium text-gray-700">Keys to add ({uploadedKeys.length})</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Key</label>
+                  <input
+                    type="text"
+                    value={newKey.key}
+                    onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="Enter key..."
+                  />
                 </div>
-                <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {uploadedKeys.map((key, index) => (
-                      <div key={index} className="text-sm text-gray-600 bg-white p-2 rounded border">
-                        {key}
-                      </div>
-                    ))}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Rotation Interval (seconds)</label>
+                  <input
+                    type="number"
+                    value={newKey.rotationInterval}
+                    onChange={(e) => setNewKey({ ...newKey, rotationInterval: parseInt(e.target.value) || 60 })}
+                    min="1"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              {!editingId && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700">Upload Keys from TXT</label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".txt"
+                    onChange={handleFileUpload}
+                    className="mt-1 block w-full text-sm text-gray-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-md file:border-0
+                      file:text-sm file:font-semibold
+                      file:bg-blue-50 file:text-blue-700
+                      hover:file:bg-blue-100"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">One key per line</p>
+                </div>
+              )}
+              {uploadedKeys.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium text-gray-700">Keys to add ({uploadedKeys.length})</h3>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {uploadedKeys.map((key, index) => (
+                        <div key={index} className="text-sm text-gray-600 bg-white p-2 rounded border">
+                          {key}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
+              )}
+              <div className="mt-6 flex justify-end space-x-2">
+                <button
+                  onClick={handleCancel}
+                  className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editingId ? handleSave : handleAddKey}
+                  className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                >
+                  {editingId ? 'Save Changes' : 'Add Key'}
+                </button>
               </div>
-            )}
-            <div className="mt-4 flex space-x-2">
-              <button
-                onClick={editingId ? handleSave : handleAddKey}
-                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-              >
-                {editingId ? 'Save' : 'Add'}
-              </button>
-              <button
-                onClick={handleCancel}
-                className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-              >
-                Cancel
-              </button>
             </div>
           </div>
         )}
