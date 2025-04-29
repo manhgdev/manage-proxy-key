@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { dbService } from '@server/database';
 import { AutoRunResponse } from '@/types/api';
+import { proxyService } from '@/server/services/proxyService';
 
 export async function GET() {
   try {
-    const isAutoRunning = await dbService.getAutoRunStatus();
+    const isAutoRunning = proxyService.getAutoRunStatus();
+
     const response: AutoRunResponse = {
       isAutoRunning,
       message: `Auto run is ${isAutoRunning ? 'enabled' : 'disabled'}`

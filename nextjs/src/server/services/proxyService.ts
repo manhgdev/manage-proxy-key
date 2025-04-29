@@ -3,13 +3,17 @@ import { KeyResponse, ProxyData } from '@/types/api';
 
 const PROXY_API_URL = 'https://proxyxoay.org/api/get.php?key=';
 
-class ProxyService {
+export class ProxyService {
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private processing: Map<string, boolean> = new Map();
   private isAutoRunning: boolean;
   private isInitialized: boolean;
   private static instance: ProxyService | null = null;
   private isProcessingAutoRun: boolean = false;
+  private static isAutoRunEnabled: boolean = false;
+  private static isInitializing: boolean = false;
+  private static currentProcessId: number | null = null;
+  private static processLock: boolean = false;
 
   private constructor() {
     this.isAutoRunning = false;
@@ -23,25 +27,50 @@ class ProxyService {
     return ProxyService.instance;
   }
 
+  private async acquireProcessLock(): Promise<boolean> {
+    if (ProxyService.processLock) {
+      return false;
+    }
+    ProxyService.processLock = true;
+    return true;
+  }
+
+  private releaseProcessLock() {
+    ProxyService.processLock = false;
+  }
+
   public async initialize() {
-    if (this.isInitialized) return;
+    if (this.isInitialized || ProxyService.isInitializing) return;
     
+    ProxyService.isInitializing = true;
     try {
-      this.isAutoRunning = await dbService.getAutoRunStatus();
+      const dbAutoRunStatus = await dbService.getAutoRunStatus();
+      this.isAutoRunning = dbAutoRunStatus;
+      ProxyService.isAutoRunEnabled = dbAutoRunStatus;
+
       if (this.isAutoRunning) {
-        await this.initializeTimers();
+        if (ProxyService.currentProcessId && ProxyService.currentProcessId !== process.pid) {
+          this.isAutoRunning = false;
+          ProxyService.isAutoRunEnabled = false;
+          await dbService.setAutoRunStatus(false);
+        } else {
+          ProxyService.currentProcessId = process.pid;
+          await this.initializeTimers();
+        }
       }
       this.isInitialized = true;
     } catch (error) {
       console.error('Failed to initialize:', error);
+    } finally {
+      ProxyService.isInitializing = false;
     }
   }
 
   private log(key: KeyResponse | null, message: string, data?: any) {
-    const now = new Date().toISOString();
+    const now = new Date().toTimeString().split(' ')[0];
     const keyInfo = key ? `Key ${key.key}` : '';
     const color = this.getLogColor(message);
-    console.log(`[${keyInfo}] ${color}${message}\x1b[0m`, data ? JSON.stringify(data, null, 2) : '');
+    console.log(`[${now}] ${keyInfo}] ${color}${message}\x1b[0m`, data ? JSON.stringify(data, null, 2) : '');
   }
 
   private getLogColor(message: string): string {
@@ -56,7 +85,6 @@ class ProxyService {
   private async initializeTimers() {
     if (!this.isAutoRunning) return;
     
-    // Dừng tất cả timer hiện tại trước khi khởi tạo lại
     this.stopAllTimers();
 
     try {
@@ -146,7 +174,7 @@ class ProxyService {
 
         const updatedKey = await dbService.getKeyById(key.id);
         if (updatedKey && updatedKey.isActive) {
-          const nextDelay = updatedKey.rotationInterval * 1000;
+          const nextDelay = (updatedKey.rotationInterval * 1000) + fetchTime;
           this.startTimerWithDelay(updatedKey, nextDelay);
         }
       } catch (error) {
@@ -200,43 +228,55 @@ class ProxyService {
   }
 
   public async toggleAutoRun() {
-    if (this.isProcessingAutoRun) {
+    if (!await this.acquireProcessLock()) {
+      this.log(null, 'Another process is already running');
       return this.isAutoRunning;
     }
 
-    this.isProcessingAutoRun = true;
     try {
       const oldStatus = this.isAutoRunning;
       
-      // Dừng tất cả timers trước khi thay đổi trạng thái
-      this.stopAllTimers();
-      this.timers.clear();
-      this.processing.clear();
-      
-      // Thay đổi trạng thái
-      this.isAutoRunning = !this.isAutoRunning;
+      if (!oldStatus) {
+        if (ProxyService.currentProcessId && ProxyService.currentProcessId !== process.pid) {
+          this.log(null, `Another process (${ProxyService.currentProcessId}) is already running`);
+          return false;
+        }
+        ProxyService.currentProcessId = process.pid;
+      }
+
+      this.isAutoRunning = !oldStatus;
+      ProxyService.isAutoRunEnabled = this.isAutoRunning;
       await dbService.setAutoRunStatus(this.isAutoRunning);
 
       this.log(null, `Auto run status changed: ${oldStatus} -> ${this.isAutoRunning}`);
 
       if (this.isAutoRunning) {
-        // Khi bật auto run, khởi tạo lại timers
-        this.isInitialized = false; // Reset trạng thái khởi tạo
-        await this.initialize();
+        await this.initializeTimers();
       } else {
-        // Khi tắt auto run, xóa hoàn toàn mọi thứ
+        this.stopAllTimers();
+        this.timers.clear();
+        this.processing.clear();
         this.isInitialized = false;
-        this.log(null, 'All timers, processes and initialization stopped completely');
+        ProxyService.currentProcessId = null;
+        this.log(null, 'All timers and processes stopped completely');
       }
 
       return this.isAutoRunning;
     } finally {
-      this.isProcessingAutoRun = false;
+      this.releaseProcessLock();
     }
   }
 
   public getAutoRunStatus() {
     return this.isAutoRunning;
+  }
+
+  public static getGlobalAutoRunStatus() {
+    return ProxyService.isAutoRunEnabled;
+  }
+
+  public static getCurrentProcessId() {
+    return ProxyService.currentProcessId;
   }
 
   public async applyRotationInterval(key: KeyResponse) {
@@ -245,5 +285,4 @@ class ProxyService {
   }
 }
 
-// Export singleton instance
 export const proxyService = ProxyService.getInstance();

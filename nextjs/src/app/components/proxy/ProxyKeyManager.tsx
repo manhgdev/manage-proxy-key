@@ -397,9 +397,11 @@ export default function ProxyKeyManager() {
       if (!response.ok) throw new Error(data.error || 'Failed to toggle auto run');
 
       setIsAutoRunning(data.isAutoRunning);
-      showToast(data.message || `Auto run ${data.isAutoRunning ? 'enabled' : 'disabled'}`, 'success');
+      showToast(
+        data.message + (data.currentProcessId ? ` (Process ID: ${data.currentProcessId})` : ''),
+        'success'
+      );
       
-      // Refresh keys after toggling auto run
       await fetchKeys();
     } catch (error) {
       console.error('Failed to toggle auto run:', error);

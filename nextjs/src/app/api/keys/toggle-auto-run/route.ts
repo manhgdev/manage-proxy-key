@@ -11,9 +11,6 @@ export async function POST() {
     // Toggle auto run status
     const newStatus = await proxyService.toggleAutoRun();
     
-    // Save to database
-    await dbService.setAutoRunStatus(newStatus);
-    
     // Return current status
     const response: AutoRunResponse = {
       isAutoRunning: newStatus,
