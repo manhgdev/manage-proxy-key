@@ -21,56 +21,125 @@ export default function Pagination({
   startItem,
   endItem,
   onPageChange,
-  onPageSizeChange
+  onPageSizeChange,
 }: PaginationProps) {
-  const pageSizeOptions = [10, 25, 50, 100];
+  const [selectedPageSize, setSelectedPageSize] = useState(pageSize);
+
+  const handlePageSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newPageSize = parseInt(e.target.value);
+    setSelectedPageSize(newPageSize);
+    onPageSizeChange(newPageSize);
+  };
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      onPageChange(page);
+    }
+  };
+
+  const renderPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    if (startPage > 1) {
+      pages.push(
+        <button
+          key={1}
+          onClick={() => handlePageChange(1)}
+          className="px-3 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          1
+        </button>
+      );
+      if (startPage > 2) {
+        pages.push(
+          <span key="start-ellipsis" className="px-2">
+            ...
+          </span>
+        );
+      }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(
+        <button
+          key={i}
+          onClick={() => handlePageChange(i)}
+          className={`px-3 py-1 rounded ${
+            i === currentPage
+              ? 'bg-blue-500 text-white'
+              : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+          }`}
+        >
+          {i}
+        </button>
+      );
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        pages.push(
+          <span key="end-ellipsis" className="px-2">
+            ...
+          </span>
+        );
+      }
+      pages.push(
+        <button
+          key={totalPages}
+          onClick={() => handlePageChange(totalPages)}
+          className="px-3 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          {totalPages}
+        </button>
+      );
+    }
+
+    return pages;
+  };
 
   return (
-    <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
-      <div className="text-sm text-gray-700 dark:text-gray-300">
-        Showing {startItem} to {endItem} of {totalItems} entries
-      </div>
-      <div className="flex items-center space-x-2">
+    <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-4">
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          Showing {startItem} to {endItem} of {totalItems} entries
+        </span>
         <select
-          value={pageSize}
-          onChange={(e) => onPageSizeChange(Number(e.target.value))}
-          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 
-                   bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                   focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+          value={selectedPageSize}
+          onChange={handlePageSizeChange}
+          className="px-2 py-1 text-sm border rounded bg-white dark:bg-gray-700 dark:border-gray-600"
         >
-          {pageSizeOptions.map((size) => (
-            <option key={size} value={size}>
-              {size} per page
-            </option>
-          ))}
+          <option value={10}>10 / page</option>
+          <option value={25}>25 / page</option>
+          <option value={50}>50 / page</option>
+          <option value={100}>100 / page</option>
         </select>
-        <div className="flex items-center space-x-1">
-          <button
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 
-                     bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                     hover:bg-gray-50 dark:hover:bg-gray-600
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-          >
-            Previous
-          </button>
-          <span className="px-3 py-1 text-gray-700 dark:text-gray-300">
-            Page {currentPage} of {totalPages}
-          </span>
-          <button
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 
-                     bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                     hover:bg-gray-50 dark:hover:bg-gray-600
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-          >
-            Next
-          </button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="px-3 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        <div className="flex items-center gap-1">
+          {renderPageNumbers()}
         </div>
+        <button
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
       </div>
     </div>
   );

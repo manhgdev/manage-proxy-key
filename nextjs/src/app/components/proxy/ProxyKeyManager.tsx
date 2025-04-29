@@ -563,25 +563,25 @@ export default function ProxyKeyManager() {
         </div>
 
         <div className="flex flex-col space-y-4 mb-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2">
             <div className="flex-1">
               <SearchInput 
                 onSearch={handleSearch}
                 placeholder="Search keys..."
               />
             </div>
-            <div className="flex gap-4 ml-4">
+            <div className="flex gap-2 md:gap-4 md:ml-4">
               <button
                 onClick={handleToggleAutoRun}
-                className={`px-4 py-2 rounded transition-colors duration-200 ${
+                className={`flex-1 md:flex-none px-3 py-2 md:px-4 rounded transition-colors duration-200 ${
                   isAutoRunning ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500 hover:bg-gray-600'
-                } text-white`}
+                } text-white text-sm md:text-base`}
               >
                 Auto Run: {isAutoRunning ? 'ON' : 'OFF'}
               </button>
               <button
                 onClick={handleAddNew}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                className="flex-1 md:flex-none px-3 py-2 md:px-4 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm md:text-base"
               >
                 + Add New Key
               </button>
