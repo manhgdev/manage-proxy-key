@@ -1,6 +1,6 @@
 {
     "apps": [{
-        "name": "og-proxy-key-manager",
+        "name": "go-proxy-key-manager",
         "script": "go run main.go",
         "args": "start",
         "env": {
