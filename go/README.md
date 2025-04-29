@@ -63,22 +63,30 @@ go run main.go
 ### HTTP/HTTPS qua HTTP Proxy
 ```bash
 # Truy cập website HTTPS qua HTTP proxy
-curl -x localhost:8081 https://api.zm.io.vn/check-ip/
+curl -x zpoxy:manhdz@localhost:8081 https://api.zm.io.vn/check-ip/
 
 # Truy cập website HTTP thông thường
-curl -x localhost:8081 ip4.me/api/
+curl -x zpoxy:manhdz@localhost:8081 ip4.me/api/
 ```
 
 ### HTTP/HTTPS qua SOCKS5 Proxy
 ```bash
 # Truy cập website HTTPS qua SOCKS5 proxy (cần flag -k nếu có vấn đề với SSL)
-curl -x socks5://localhost:8081 https://api.zm.io.vn/check-ip/
+curl -x socks5://zpoxy:manhdz@localhost:8081 https://api.zm.io.vn/check-ip/
 # Hoặc bỏ qua xác thực SSL nếu cần
-curl -k -x socks5://localhost:8081 https://api.zm.io.vn/check-ip/
+curl -k -x socks5://zpoxy:manhdz@localhost:8081 https://api.zm.io.vn/check-ip/
 
 # Truy cập website HTTP thông thường qua SOCKS5
-curl -x socks5://localhost:8081 ip4.me/api/
+curl -x socks5://zpoxy:manhdz@localhost:8081 ip4.me/api/
 ```
+
+## Xác thực
+
+Server yêu cầu xác thực cho tất cả các kết nối với thông tin đăng nhập:
+- Username: zpoxy
+- Password: manhdz
+
+Nếu không cung cấp thông tin xác thực hoặc sai thông tin, server sẽ trả về lỗi 407 Proxy Authentication Required.
 
 ## Lưu ý khi sử dụng SOCKS5 với HTTPS
 
@@ -86,7 +94,7 @@ Khi sử dụng SOCKS5 proxy với kết nối HTTPS, SSL handshake được th�
 
 1. Nếu gặp lỗi SSL certificate, thêm tùy chọn `-k` vào lệnh curl:
    ```bash
-   curl -k -x socks5://localhost:8081 https://api.zm.io.vn/check-ip/
+   curl -k -x socks5://zpoxy:manhdz@localhost:8081 https://api.zm.io.vn/check-ip/
    ```
 
 2. Đối với ứng dụng khác, có thể cần cấu hình bỏ qua xác thực SSL tương tự

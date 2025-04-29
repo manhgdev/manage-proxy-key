@@ -45,32 +45,14 @@ func handleSOCKS5(clientConn net.Conn, pm *ProxyManager) {
 	logger.Info("Handling SOCKS5 proxy request")
 	defer clientConn.Close()
 
-	// Đọc phiên bản SOCKS và số phương thức xác thực
-	header := make([]byte, 2)
-	if _, err := io.ReadFull(clientConn, header); err != nil {
-		logger.Error("Failed to read SOCKS5 header: %v", err)
+	// Xác thực SOCKS5
+	if ok, err := SOCKS5Auth(clientConn); !ok {
+		logger.Error("SOCKS5 authentication failed: %v", err)
 		return
 	}
-
-	if header[0] != SOCKS5_VERSION {
-		logger.Error("Unsupported SOCKS version: %d", header[0])
-		clientConn.Write([]byte{SOCKS5_VERSION, 0xFF})
-		return
-	}
-
-	// Đọc danh sách phương thức xác thực được hỗ trợ
-	methodCount := int(header[1])
-	methods := make([]byte, methodCount)
-	if _, err := io.ReadFull(clientConn, methods); err != nil {
-		logger.Error("Failed to read authentication methods: %v", err)
-		return
-	}
-
-	// Hiện tại chúng ta chỉ hỗ trợ phương thức không xác thực (0)
-	clientConn.Write([]byte{SOCKS5_VERSION, 0x00})
 
 	// Đọc request
-	header = make([]byte, 4)
+	header := make([]byte, 4)
 	if _, err := io.ReadFull(clientConn, header); err != nil {
 		logger.Error("Failed to read SOCKS5 request: %v", err)
 		return

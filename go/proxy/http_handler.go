@@ -48,6 +48,13 @@ func handleHTTPProxy(clientConn net.Conn, reader *bufio.Reader, firstLine string
 		}
 	}
 
+	// Kiểm tra xác thực
+	if ok, err := checkAuth(headers); !ok {
+		logger.Error("Authentication failed: %v", err)
+		clientConn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"Proxy Authentication Required\"\r\n\r\n"))
+		return
+	}
+
 	// Trích xuất URL đích từ dòng đầu tiên
 	parts := strings.Split(firstLine, " ")
 	if len(parts) != 3 {
