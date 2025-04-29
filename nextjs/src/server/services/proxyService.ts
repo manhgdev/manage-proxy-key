@@ -150,7 +150,7 @@ export class ProxyService {
 
     this.stopTimer(key.id);
 
-    this.log(key, 'Timer scheduled nextRun: ' + `${(delay / 1000).toFixed(1)}s`);
+    
 
     const timer = setTimeout(async () => {
       this.timers.delete(key.id);
@@ -169,12 +169,18 @@ export class ProxyService {
           this.stopKey(key.id);
           return;
         }
+        
+        const fetchTime = await this.fetchProxyData(freshKey);
 
         const lastRotatedAt = new Date(freshKey.lastRotatedAt).getTime();
         const intervalMs = freshKey.rotationInterval * 1000;
-        const fetchTime = await this.fetchProxyData(freshKey);
+        
+
         let nextDelay = lastRotatedAt + intervalMs - Date.now() + fetchTime;
         if (nextDelay < 0) nextDelay = 0;
+
+        this.log(key, 'Timer scheduled nextRun: ' + `${(nextDelay / 1000).toFixed(1)}s`);
+
         this.startTimerWithDelay(freshKey, nextDelay);
       } catch (error) {
         console.error(`Error in timer for key ${key.id}:`, error);
