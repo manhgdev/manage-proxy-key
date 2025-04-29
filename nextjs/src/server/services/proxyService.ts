@@ -170,13 +170,12 @@ export class ProxyService {
           return;
         }
 
+        const lastRotatedAt = new Date(freshKey.lastRotatedAt).getTime();
+        const intervalMs = freshKey.rotationInterval * 1000;
         const fetchTime = await this.fetchProxyData(freshKey);
-
-        const updatedKey = await dbService.getKeyById(key.id);
-        if (updatedKey && updatedKey.isActive) {
-          const nextDelay = (updatedKey.rotationInterval * 1000) + fetchTime;
-          this.startTimerWithDelay(updatedKey, nextDelay);
-        }
+        let nextDelay = lastRotatedAt + intervalMs - Date.now() + fetchTime;
+        if (nextDelay < 0) nextDelay = 0;
+        this.startTimerWithDelay(freshKey, nextDelay);
       } catch (error) {
         console.error(`Error in timer for key ${key.id}:`, error);
       } finally {
