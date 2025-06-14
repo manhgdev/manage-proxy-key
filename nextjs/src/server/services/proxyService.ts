@@ -140,7 +140,7 @@ export class ProxyService {
         // Preserve the manually set expirationDate instead of overwriting with API response
         const updatedProxyData = { ...data };
         if (key.expirationDate) {
-          updatedProxyData["Token expiration date"] = key.expirationDate;
+          // updatedProxyData["Token expiration date"] = key.expirationDate;
         }
         
         updatedKey = {
