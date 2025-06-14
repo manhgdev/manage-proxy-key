@@ -137,9 +137,15 @@ export class ProxyService {
             : data
         };
       } else {
+        // Preserve the manually set expirationDate instead of overwriting with API response
+        const updatedProxyData = { ...data };
+        if (key.expirationDate) {
+          updatedProxyData["Token expiration date"] = key.expirationDate;
+        }
+        
         updatedKey = {
           ...key,
-          proxyData: data,
+          proxyData: updatedProxyData,
           lastRotatedAt: new Date().toISOString()
         };
       }

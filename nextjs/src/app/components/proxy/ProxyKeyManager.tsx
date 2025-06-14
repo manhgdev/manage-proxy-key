@@ -50,6 +50,7 @@ export default function ProxyKeyManager() {
   const [newKey, setNewKey] = useState({
     key: '',
     rotationInterval: 60,
+    expirationDate: '',
   });
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,6 +72,7 @@ export default function ProxyKeyManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [bulkRotationInterval, setBulkRotationInterval] = useState(60);
+  const [bulkExpirationDate, setBulkExpirationDate] = useState('');
 
   useEffect(() => {
     const initializeAutoRun = async () => {
@@ -148,6 +150,7 @@ export default function ProxyKeyManager() {
           body: JSON.stringify({
             key: key,
             rotationInterval: newKey.rotationInterval,
+            expirationDate: newKey.expirationDate,
             isActive: true
           }),
         });
@@ -179,6 +182,7 @@ export default function ProxyKeyManager() {
             body: JSON.stringify({
               key: key,
               rotationInterval: newKey.rotationInterval,
+              expirationDate: newKey.expirationDate,
               isActive: true
             }),
           });
@@ -200,7 +204,7 @@ export default function ProxyKeyManager() {
     }
 
     await fetchKeys();
-    setNewKey({ key: '', rotationInterval: 60 });
+    setNewKey({ key: '', rotationInterval: 60, expirationDate: '' });
     setUploadedKeys([]);
     setIsEditModalOpen(false);
 
@@ -269,9 +273,22 @@ export default function ProxyKeyManager() {
   };
 
   const handleEdit = (proxyKey: ProxyKey) => {
+    // Convert datetime to local datetime format for input
+    let formattedDate = '';
+    if (proxyKey.expirationDate) {
+      try {
+        const date = new Date(proxyKey.expirationDate);
+        // Format to YYYY-MM-DDTHH:mm for datetime-local input
+        formattedDate = date.toISOString().slice(0, 16);
+      } catch (error) {
+        formattedDate = '';
+      }
+    }
+
     setNewKey({
       key: proxyKey.key,
       rotationInterval: proxyKey.rotationInterval,
+      expirationDate: formattedDate,
     });
     setEditingId(proxyKey.id);
     setIsEditModalOpen(true);
@@ -287,7 +304,7 @@ export default function ProxyKeyManager() {
       id: editingId || Date.now().toString(),
       key: newKey.key,
       url: '',
-      expirationDate: '',
+      expirationDate: newKey.expirationDate,
       isActive: true,
       createdAt: new Date().toISOString(),
       lastRotatedAt: new Date().toISOString(),
@@ -306,7 +323,7 @@ export default function ProxyKeyManager() {
       const data = await response.json();
       if (response.ok) {
         await fetchKeys();
-        setNewKey({ key: '', rotationInterval: 60 });
+        setNewKey({ key: '', rotationInterval: 60, expirationDate: '' });
         setEditingId(null);
         setIsEditModalOpen(false);
         showToast('Key updated successfully', 'success');
@@ -320,7 +337,7 @@ export default function ProxyKeyManager() {
   };
 
   const handleCancel = () => {
-    setNewKey({ key: '', rotationInterval: 60 });
+    setNewKey({ key: '', rotationInterval: 60, expirationDate: '' });
     setEditingId(null);
     setIsEditModalOpen(false);
     setUploadedKeys([]);
@@ -478,7 +495,8 @@ export default function ProxyKeyManager() {
         if (key) {
           const updatedKey: ProxyKey = {
             ...key,
-            rotationInterval: bulkRotationInterval
+            rotationInterval: bulkRotationInterval,
+            expirationDate: bulkExpirationDate || key.expirationDate
           };
           const response = await fetch('/api/keys', {
             method: 'PUT',
@@ -494,11 +512,12 @@ export default function ProxyKeyManager() {
           }
         }
       }
-      showToast(`Updated rotation interval for ${keysToUpdate.length} keys`, 'success');
+      showToast(`Updated ${keysToUpdate.length} keys`, 'success');
       setIsBulkEditModalOpen(false);
+      setBulkExpirationDate(''); // Reset after successful update
     } catch (error) {
-      console.error('Failed to update rotation interval:', error);
-      showToast('Failed to update rotation interval', 'error');
+      console.error('Failed to update keys:', error);
+      showToast('Failed to update keys', 'error');
     }
   };
 
@@ -517,7 +536,7 @@ export default function ProxyKeyManager() {
   };
 
   const handleAddNew = () => {
-    setNewKey({ key: '', rotationInterval: 60 });
+    setNewKey({ key: '', rotationInterval: 60, expirationDate: '' });
     setEditingId(null);
     setIsEditModalOpen(true);
   };
@@ -601,7 +620,7 @@ export default function ProxyKeyManager() {
               onClick={() => setIsBulkEditModalOpen(true)}
               className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 w-full md:w-auto"
             >
-              Update Rotation Interval ({selectedKeys.size})
+              Edit Selected ({selectedKeys.size})
             </button>
             <button
               onClick={handleBulkDelete}
@@ -613,108 +632,231 @@ export default function ProxyKeyManager() {
         )}
 
         {isEditModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-2xl w-full mx-4">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{editingId ? 'Edit Key' : 'Add New Key'}</h2>
-                <button
-                  onClick={handleCancel}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Key</label>
-                  {editingId ? (
-                    <input
-                      type="text"
-                      value={newKey.key}
-                      onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
-                      className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 
-                               shadow-sm focus:border-blue-500 focus:ring-blue-500
-                               bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                      placeholder="Enter key"
-                    />
-                  ) : (
-                    <>
-                      <textarea
-                        value={newKey.key}
-                        onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 
-                                 shadow-sm focus:border-blue-500 focus:ring-blue-500
-                                 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="Enter keys, one per line..."
-                        rows={4}
-                      />
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">One key per line</p>
-                    </>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Rotation Interval (seconds)</label>
-                  <input
-                    type="number"
-                    value={newKey.rotationInterval}
-                    onChange={(e) => setNewKey({ ...newKey, rotationInterval: parseInt(e.target.value) || 60 })}
-                    min="1"
-                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 
-                             shadow-sm focus:border-blue-500 focus:ring-blue-500
-                             bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  />
-                </div>
-              </div>
-              {!editingId && (
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Upload Keys from TXT</label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".txt"
-                    onChange={handleFileUpload}
-                    className="mt-1 block w-full text-sm text-gray-500 dark:text-gray-400
-                      file:mr-4 file:py-2 file:px-4
-                      file:rounded-md file:border-0
-                      file:text-sm file:font-semibold
-                      file:bg-blue-50 file:text-blue-700
-                      hover:file:bg-blue-100
-                      dark:file:bg-gray-700 dark:file:text-blue-300
-                      dark:hover:file:bg-gray-600"
-                  />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">One key per line</p>
-                </div>
-              )}
-              {uploadedKeys.length > 0 && (
-                <div className="mt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Keys to add ({uploadedKeys.length})</h3>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 rounded-t-2xl">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center space-x-3">
+                    <div className="bg-white bg-opacity-20 p-2 rounded-lg">
+                      {editingId ? (
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">
+                        {editingId ? 'Edit Proxy Key' : 'Add New Proxy Key'}
+                      </h2>
+                      <p className="text-blue-100 text-sm">
+                        {editingId ? 'Update your proxy key settings' : 'Configure your new proxy key'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="max-h-40 overflow-y-auto bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {uploadedKeys.map((key, index) => (
-                        <div key={index} className="text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 p-2 rounded border dark:border-gray-600">
-                          {key}
+                  <button
+                    onClick={handleCancel}
+                    className="text-white hover:text-red-200 transition-colors duration-200 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-6">
+                {/* Main Form */}
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-xl">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Basic Information
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Key Input */}
+                    <div className="lg:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                        Proxy Key{editingId ? '' : 's'}
+                      </label>
+                      {editingId ? (
+                        <input
+                          type="text"
+                          value={newKey.key}
+                          onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
+                          className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 
+                                   shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   transition-all duration-200"
+                          placeholder="Enter your proxy key"
+                        />
+                      ) : (
+                        <div>
+                          <textarea
+                            value={newKey.key}
+                            onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
+                            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 
+                                     shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                                     bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                     transition-all duration-200"
+                            placeholder="Enter proxy keys, one per line..."
+                            rows={4}
+                          />
+                          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Enter one proxy key per line for bulk addition
+                          </p>
                         </div>
-                      ))}
+                      )}
+                    </div>
+
+                    {/* Rotation Interval */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Rotation Interval
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={newKey.rotationInterval}
+                          onChange={(e) => setNewKey({ ...newKey, rotationInterval: parseInt(e.target.value) || 60 })}
+                          min="1"
+                          className="w-full px-4 py-3 pr-20 rounded-lg border border-gray-300 dark:border-gray-600 
+                                   shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   transition-all duration-200"
+                          placeholder="60"
+                        />
+                        <span className="absolute right-3 top-3 text-sm text-gray-500 dark:text-gray-400">seconds</span>
+                      </div>
+                    </div>
+
+                    {/* Expiration Date */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        Expiration Date
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={newKey.expirationDate}
+                        onChange={(e) => setNewKey({ ...newKey, expirationDate: e.target.value })}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 
+                                 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 transition-all duration-200"
+                      />
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        When this proxy key will expire (optional)
+                      </p>
                     </div>
                   </div>
                 </div>
-              )}
-              <div className="mt-6 flex justify-end space-x-2">
+
+                {/* File Upload Section */}
+                {!editingId && (
+                  <div className="bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20 p-6 rounded-xl border border-blue-200 dark:border-blue-700">
+                    <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      Bulk Upload
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".txt"
+                        onChange={handleFileUpload}
+                        className="w-full text-sm text-gray-500 dark:text-gray-400
+                          file:mr-4 file:py-3 file:px-6
+                          file:rounded-lg file:border-0
+                          file:text-sm file:font-medium
+                          file:bg-blue-500 file:text-white
+                          hover:file:bg-blue-600
+                          file:cursor-pointer file:transition-colors file:duration-200
+                          cursor-pointer"
+                      />
+                      <p className="text-xs text-blue-600 dark:text-blue-300 flex items-center">
+                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Upload a .txt file with one proxy key per line
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Uploaded Keys Preview */}
+                {uploadedKeys.length > 0 && (
+                  <div className="bg-green-50 dark:bg-green-900 dark:bg-opacity-20 p-6 rounded-xl border border-green-200 dark:border-green-700">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-green-900 dark:text-green-100 flex items-center">
+                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Keys Ready to Add ({uploadedKeys.length})
+                      </h3>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto bg-white dark:bg-gray-800 p-4 rounded-lg border border-green-200 dark:border-green-700">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {uploadedKeys.map((key, index) => (
+                          <div key={index} className="text-sm text-gray-700 dark:text-gray-300 bg-green-50 dark:bg-green-900 dark:bg-opacity-30 p-3 rounded-md border border-green-200 dark:border-green-600 font-mono">
+                            {key}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 rounded-b-2xl flex justify-end space-x-3">
                 <button
                   onClick={handleCancel}
-                  className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                  className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 
+                           transition-colors duration-200 flex items-center space-x-2 font-medium"
                 >
-                  Cancel
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span>Cancel</span>
                 </button>
                 <button
                   onClick={editingId ? handleSave : handleAddKey}
-                  className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg 
+                           hover:from-blue-600 hover:to-purple-700 transition-all duration-200 
+                           flex items-center space-x-2 font-medium shadow-lg"
                 >
-                  {editingId ? 'Save Changes' : 'Add Key'}
+                  {editingId ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                  )}
+                  <span>{editingId ? 'Save Changes' : 'Add Keys'}</span>
                 </button>
               </div>
             </div>
@@ -722,35 +864,125 @@ export default function ProxyKeyManager() {
         )}
 
         {isBulkEditModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
-              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Update Rotation Interval</h2>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Rotation Interval (seconds)
-                </label>
-                <input
-                  type="number"
-                  value={bulkRotationInterval}
-                  onChange={(e) => setBulkRotationInterval(parseInt(e.target.value) || 60)}
-                  min="1"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                           focus:outline-none focus:ring-2 focus:ring-blue-500
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 rounded-t-2xl">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center space-x-3">
+                    <div className="bg-white bg-opacity-20 p-2 rounded-lg">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">Bulk Edit Keys</h2>
+                      <p className="text-blue-100 text-sm">
+                        Update {selectedKeys.size} selected key{selectedKeys.size > 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsBulkEditModalOpen(false);
+                      setBulkExpirationDate('');
+                    }}
+                    className="text-white hover:text-red-200 transition-colors duration-200 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <div className="flex justify-end space-x-2">
+
+              {/* Content */}
+              <div className="p-6">
+                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-xl space-y-6">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Update Settings
+                  </h3>
+
+                  {/* Rotation Interval */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Rotation Interval
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={bulkRotationInterval}
+                        onChange={(e) => setBulkRotationInterval(parseInt(e.target.value) || 60)}
+                        min="1"
+                        className="w-full px-4 py-3 pr-20 rounded-lg border border-gray-300 dark:border-gray-600 
+                                 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 transition-all duration-200"
+                        placeholder="60"
+                      />
+                      <span className="absolute right-3 top-3 text-sm text-gray-500 dark:text-gray-400">seconds</span>
+                    </div>
+                  </div>
+
+                  {/* Expiration Date */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Expiration Date
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={bulkExpirationDate}
+                      onChange={(e) => setBulkExpirationDate(e.target.value)}
+                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 
+                               shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               transition-all duration-200"
+                    />
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Leave empty to keep existing expiration dates
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 rounded-b-2xl flex justify-end space-x-3">
                 <button
-                  onClick={() => setIsBulkEditModalOpen(false)}
-                  className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                  onClick={() => {
+                    setIsBulkEditModalOpen(false);
+                    setBulkExpirationDate('');
+                  }}
+                  className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 
+                           transition-colors duration-200 flex items-center space-x-2 font-medium"
                 >
-                  Cancel
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span>Cancel</span>
                 </button>
                 <button
                   onClick={handleBulkUpdateRotationInterval}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg 
+                           hover:from-blue-600 hover:to-purple-700 transition-all duration-200 
+                           flex items-center space-x-2 font-medium shadow-lg"
                 >
-                  Update
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>Update Keys</span>
                 </button>
               </div>
             </div>

@@ -29,7 +29,58 @@ export default function ProxyTable({
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   const formatDateTime = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString();
+    if (!dateStr) return 'N/A';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleString('vi-VN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
+  };
+
+  const formatExpirationDate = (dateStr: string) => {
+    if (!dateStr) {
+      return {
+        formatted: 'N/A',
+        isExpired: false,
+        daysLeft: 0
+      };
+    }
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const isExpired = date < now;
+      const timeDiff = Math.abs(date.getTime() - now.getTime());
+      const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+      
+      const formattedDate = date.toLocaleString('vi-VN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+
+      return {
+        formatted: formattedDate,
+        isExpired,
+        daysLeft
+      };
+    } catch (error) {
+      return {
+        formatted: 'Invalid Date',
+        isExpired: false,
+        daysLeft: 0
+      };
+    }
   };
 
   const handleSort = (field: SortField) => {
@@ -48,11 +99,7 @@ export default function ProxyTable({
       let aValue: any = a[sortField];
       let bValue: any = b[sortField];
 
-      // Xử lý đặc biệt cho trường proxyData
-      if (sortField === 'expirationDate' && a.proxyData && b.proxyData) {
-        aValue = a.proxyData["Token expiration date"] || '';
-        bValue = b.proxyData["Token expiration date"] || '';
-      }
+      // No special handling needed since we're using the direct expirationDate field
 
       // So sánh giá trị
       if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
@@ -150,10 +197,41 @@ export default function ProxyTable({
                 </td>
                 <td className="px-4 py-3 text-center text-gray-900 dark:text-gray-300">{index + 1}</td>
                 <td className="px-4 py-3 text-gray-900 dark:text-gray-300">{proxyKey.key}</td>
-                <td className="px-4 py-3 text-gray-900 dark:text-gray-300">
-                  {proxyKey.proxyData && proxyKey.proxyData["Token expiration date"] 
-                    ? proxyKey.proxyData["Token expiration date"]
-                    : 'N/A'}
+                <td className="px-4 py-3">
+                  {(() => {
+                    const expInfo = formatExpirationDate(proxyKey.expirationDate);
+                    if (expInfo.formatted === 'N/A') {
+                      return <span className="text-gray-500 dark:text-gray-400">N/A</span>;
+                    }
+                    
+                    return (
+                      <div className="flex flex-col">
+                        <span className={`text-sm font-medium ${
+                          expInfo.isExpired 
+                            ? 'text-red-600 dark:text-red-400' 
+                            : expInfo.daysLeft <= 7
+                            ? 'text-yellow-600 dark:text-yellow-400'
+                            : 'text-gray-900 dark:text-gray-300'
+                        }`}>
+                          {expInfo.formatted}
+                        </span>
+                        {expInfo.formatted !== 'N/A' && expInfo.formatted !== 'Invalid Date' && (
+                          <span className={`text-xs ${
+                            expInfo.isExpired 
+                              ? 'text-red-500 dark:text-red-400' 
+                              : expInfo.daysLeft <= 7
+                              ? 'text-yellow-500 dark:text-yellow-400'
+                              : 'text-gray-500 dark:text-gray-400'
+                          }`}>
+                            {expInfo.isExpired 
+                              ? `Expired ${expInfo.daysLeft} days ago`
+                              : `${expInfo.daysLeft} days left`
+                            }
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-center text-gray-900 dark:text-gray-300">{proxyKey.rotationInterval}</td>
                 <td className="px-4 py-3">
