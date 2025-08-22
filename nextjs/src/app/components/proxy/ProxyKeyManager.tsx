@@ -137,9 +137,9 @@ export default function ProxyKeyManager() {
 
     let successCount = 0;
     let errorCount = 0;
+    let duplicateCount = 0;
     let errorMessage = '';
 
-    // Xử lý keys từ textarea
     for (const key of keysToAdd) {
       try {
         const response = await fetch('/api/keys', {
@@ -159,18 +159,19 @@ export default function ProxyKeyManager() {
         if (response.ok) {
           successCount++;
         } else {
-          errorCount++;
-          errorMessage = data.error || 'Failed to add key';
-          console.error(`Failed to add key ${key}:`, data.error);
+          if (response.status === 409) {
+            duplicateCount++;
+          } else {
+            errorCount++;
+            errorMessage = data.error || 'Failed to add key';
+          }
         }
       } catch (error) {
         errorCount++;
         errorMessage = 'Failed to add key';
-        console.error(`Failed to add key ${key}:`, error);
       }
     }
 
-    // Nếu có uploadedKeys
     if (uploadedKeys.length > 0) {
       for (const key of uploadedKeys) {
         try {
@@ -191,14 +192,16 @@ export default function ProxyKeyManager() {
           if (response.ok) {
             successCount++;
           } else {
-            errorCount++;
-            errorMessage = data.error || 'Failed to add key';
-            console.error(`Failed to add key ${key}:`, data.error);
+            if (response.status === 409) {
+              duplicateCount++;
+            } else {
+              errorCount++;
+              errorMessage = data.error || 'Failed to add key';
+            }
           }
         } catch (error) {
           errorCount++;
           errorMessage = 'Failed to add key';
-          console.error(`Failed to add key ${key}:`, error);
         }
       }
     }
@@ -208,8 +211,12 @@ export default function ProxyKeyManager() {
     setUploadedKeys([]);
     setIsEditModalOpen(false);
 
-    if (successCount > 0) {
-      showToast(`Added ${successCount} keys${errorCount > 0 ? `, ${errorCount} failed` : ''}`, 'success');
+    if (successCount > 0 || duplicateCount > 0 || errorCount > 0) {
+      const parts: string[] = [];
+      if (successCount > 0) parts.push(`added ${successCount}`);
+      if (duplicateCount > 0) parts.push(`${duplicateCount} duplicates`);
+      if (errorCount > 0) parts.push(`${errorCount} failed`);
+      showToast(parts.join(', '), successCount > 0 && errorCount === 0 ? 'success' : 'warning');
     } else {
       showToast(errorMessage || 'Failed to add any keys', 'error');
     }
@@ -381,8 +388,15 @@ export default function ProxyKeyManager() {
         return;
       }
 
-      // Kiểm tra key trùng
-      const existingKeys = proxyKeys.map(k => k.key);
+      let existingKeys = proxyKeys.map(k => k.key);
+      try {
+        const resp = await fetch(`/api/keys?page=1&pageSize=100000`);
+        const data = await resp.json();
+        if (resp.ok && Array.isArray(data.keys)) {
+          existingKeys = data.keys.map((k: any) => k.key);
+        }
+      } catch {}
+
       const duplicateKeys = keys.filter(key => existingKeys.includes(key));
       const newKeys = keys.filter(key => !existingKeys.includes(key));
 
@@ -395,7 +409,6 @@ export default function ProxyKeyManager() {
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      console.error('Failed to read file:', error);
       showToast('Failed to read file', 'error');
     }
   };
@@ -632,194 +645,90 @@ export default function ProxyKeyManager() {
         )}
 
         {isEditModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              {/* Header */}
-              <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 rounded-t-2xl">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center space-x-3">
-                    <div className="bg-white bg-opacity-20 p-2 rounded-lg">
-                      {editingId ? (
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                      )}
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-white">
-                        {editingId ? 'Edit Proxy Key' : 'Add New Proxy Key'}
-                      </h2>
-                      <p className="text-blue-100 text-sm">
-                        {editingId ? 'Update your proxy key settings' : 'Configure your new proxy key'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleCancel}
-                    className="text-white hover:text-red-200 transition-colors duration-200 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-lg w-full">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 rounded-t-xl flex items-center justify-between">
+                <h2 className="text-base md:text-lg font-semibold text-gray-900 dark:text-white">
+                  {editingId ? 'Edit Proxy Key' : 'Add Proxy Key'}
+                </h2>
+                <button
+                  onClick={handleCancel}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white"
+                >
+                  ×
+                </button>
               </div>
 
-              {/* Content */}
-              <div className="p-6 space-y-6">
-                {/* Main Form */}
-                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-xl">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-                    <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Basic Information
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Key Input */}
-                    <div className="lg:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                        </svg>
-                        Proxy Key{editingId ? '' : 's'}
-                      </label>
-                      {editingId ? (
-                        <input
-                          type="text"
-                          value={newKey.key}
-                          onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
-                          className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 
-                                   shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
-                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                   transition-all duration-200"
-                          placeholder="Enter your proxy key"
-                        />
-                      ) : (
-                        <div>
-                          <textarea
-                            value={newKey.key}
-                            onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
-                            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 
-                                     shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
-                                     bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                     transition-all duration-200"
-                            placeholder="Enter proxy keys, one per line..."
-                            rows={4}
-                          />
-                          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center">
-                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Enter one proxy key per line for bulk addition
-                          </p>
-                        </div>
-                      )}
-                    </div>
+              <div className="p-4 space-y-4">
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Proxy Key{editingId ? '' : 's'}
+                  </label>
+                  {editingId ? (
+                    <input
+                      type="text"
+                      value={newKey.key}
+                      onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      placeholder="Enter your proxy key"
+                    />
+                  ) : (
+                    <textarea
+                      value={newKey.key}
+                      onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      placeholder="Enter proxy keys, one per line..."
+                      rows={4}
+                    />
+                  )}
+                </div>
 
-                    {/* Rotation Interval */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Rotation Interval
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={newKey.rotationInterval}
-                          onChange={(e) => setNewKey({ ...newKey, rotationInterval: parseInt(e.target.value) || 60 })}
-                          min="1"
-                          className="w-full px-4 py-3 pr-20 rounded-lg border border-gray-300 dark:border-gray-600 
-                                   shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
-                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                   transition-all duration-200"
-                          placeholder="60"
-                        />
-                        <span className="absolute right-3 top-3 text-sm text-gray-500 dark:text-gray-400">seconds</span>
-                      </div>
-                    </div>
-
-                    {/* Expiration Date */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        Expiration Date
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={newKey.expirationDate}
-                        onChange={(e) => setNewKey({ ...newKey, expirationDate: e.target.value })}
-                        className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 
-                                 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 transition-all duration-200"
-                      />
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        When this proxy key will expire (optional)
-                      </p>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Rotation Interval
+                    </label>
+                    <input
+                      type="number"
+                      value={newKey.rotationInterval}
+                      onChange={(e) => setNewKey({ ...newKey, rotationInterval: parseInt(e.target.value) || 60 })}
+                      min="1"
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      placeholder="60"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Expiration Date
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={newKey.expirationDate}
+                      onChange={(e) => setNewKey({ ...newKey, expirationDate: e.target.value })}
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
                   </div>
                 </div>
 
-                {/* File Upload Section */}
                 {!editingId && (
-                  <div className="bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20 p-6 rounded-xl border border-blue-200 dark:border-blue-700">
-                    <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center">
-                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                      Bulk Upload
-                    </h3>
-                    
-                    <div className="space-y-4">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".txt"
-                        onChange={handleFileUpload}
-                        className="w-full text-sm text-gray-500 dark:text-gray-400
-                          file:mr-4 file:py-3 file:px-6
-                          file:rounded-lg file:border-0
-                          file:text-sm file:font-medium
-                          file:bg-blue-500 file:text-white
-                          hover:file:bg-blue-600
-                          file:cursor-pointer file:transition-colors file:duration-200
-                          cursor-pointer"
-                      />
-                      <p className="text-xs text-blue-600 dark:text-blue-300 flex items-center">
-                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Upload a .txt file with one proxy key per line
-                      </p>
-                    </div>
+                  <div className="space-y-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".txt"
+                      onChange={handleFileUpload}
+                      className="w-full text-sm text-gray-500 dark:text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-500 file:text-white hover:file:bg-blue-600 cursor-pointer"
+                    />
                   </div>
                 )}
 
-                {/* Uploaded Keys Preview */}
                 {uploadedKeys.length > 0 && (
-                  <div className="bg-green-50 dark:bg-green-900 dark:bg-opacity-20 p-6 rounded-xl border border-green-200 dark:border-green-700">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-semibold text-green-900 dark:text-green-100 flex items-center">
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Keys Ready to Add ({uploadedKeys.length})
-                      </h3>
-                    </div>
-                    <div className="max-h-40 overflow-y-auto bg-white dark:bg-gray-800 p-4 rounded-lg border border-green-200 dark:border-green-700">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white">Keys Ready to Add ({uploadedKeys.length})</div>
+                    <div className="max-h-24 overflow-y-auto bg-white dark:bg-gray-800 p-3 rounded-lg border border-green-200 dark:border-green-700">
+                      <div className="grid grid-cols-1 gap-2">
                         {uploadedKeys.map((key, index) => (
-                          <div key={index} className="text-sm text-gray-700 dark:text-gray-300 bg-green-50 dark:bg-green-900 dark:bg-opacity-30 p-3 rounded-md border border-green-200 dark:border-green-600 font-mono">
+                          <div key={index} className="text-xs text-gray-700 dark:text-gray-300 bg-green-50 dark:bg-green-900/30 p-2 rounded border border-green-200 dark:border-green-600 font-mono">
                             {key}
                           </div>
                         ))}
@@ -829,34 +738,18 @@ export default function ProxyKeyManager() {
                 )}
               </div>
 
-              {/* Footer */}
-              <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 rounded-b-2xl flex justify-end space-x-3">
+              <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 rounded-b-xl flex justify-end gap-2">
                 <button
                   onClick={handleCancel}
-                  className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 
-                           transition-colors duration-200 flex items-center space-x-2 font-medium"
+                  className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                  <span>Cancel</span>
+                  Cancel
                 </button>
                 <button
                   onClick={editingId ? handleSave : handleAddKey}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg 
-                           hover:from-blue-600 hover:to-purple-700 transition-all duration-200 
-                           flex items-center space-x-2 font-medium shadow-lg"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
-                  {editingId ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                  )}
-                  <span>{editingId ? 'Save Changes' : 'Add Keys'}</span>
+                  {editingId ? 'Save' : 'Add'}
                 </button>
               </div>
             </div>

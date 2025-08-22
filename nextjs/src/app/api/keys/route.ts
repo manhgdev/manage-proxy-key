@@ -44,6 +44,15 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
+    const existing = await dbService.getKeyByValue(body.key);
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Key already exists' },
+        { status: 409 }
+      );
+    }
+
     const key: KeyResponse = {
       ...body,
       id: crypto.randomUUID(),
@@ -68,6 +77,24 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
+
+    if (!body.id) {
+      return NextResponse.json(
+        { error: 'Key ID is required' },
+        { status: 400 }
+      );
+    }
+
+    if (body.key) {
+      const existing = await dbService.getKeyByValue(body.key);
+      if (existing && existing.id !== body.id) {
+        return NextResponse.json(
+          { error: 'Key already exists' },
+          { status: 409 }
+        );
+      }
+    }
+
     const key: KeyResponse = {
       ...body,
       lastRotatedAt: new Date().toISOString()

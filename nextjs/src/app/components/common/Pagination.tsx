@@ -113,7 +113,7 @@ export default function Pagination({
         <select
           value={selectedPageSize}
           onChange={handlePageSizeChange}
-          className="px-2 py-1 text-sm border rounded bg-white dark:bg-gray-700 dark:border-gray-600"
+          className="px-2 py-1 text-sm border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300"
         >
           <option value={10}>10 / page</option>
           <option value={25}>25 / page</option>

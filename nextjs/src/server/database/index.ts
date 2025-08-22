@@ -96,6 +96,28 @@ export const dbService = {
     }
   },
 
+  getKeyByValue: async (value: string): Promise<KeyResponse | null> => {
+    try {
+      const stmt = db.prepare('SELECT * FROM proxy_keys WHERE key = ? LIMIT 1');
+      const row = stmt.get(value) as DatabaseRow | undefined;
+      if (!row) return null;
+      return {
+        id: row.id,
+        key: row.key,
+        url: row.url,
+        expirationDate: row.expirationDate,
+        isActive: Boolean(row.isActive),
+        createdAt: row.createdAt,
+        lastRotatedAt: row.lastRotatedAt,
+        rotationInterval: row.rotationInterval || 60,
+        proxyData: row.proxyData ? JSON.parse(row.proxyData) : null
+      };
+    } catch (error) {
+      console.error('Error getting key by value:', error);
+      throw error;
+    }
+  },
+
   updateKey: async (key: KeyResponse): Promise<void> => {
     try {
       const stmt = db.prepare(`
