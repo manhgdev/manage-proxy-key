@@ -129,20 +129,28 @@ export class ProxyService {
 
       const data = await response.json() as ProxyData;
 
+      if (data.status === 102) {
+        updatedKey = {
+          ...key,
+          isActive: false,
+          proxyData: data,
+          lastRotatedAt: new Date().toISOString()
+        };
+        await dbService.updateKey(updatedKey);
+        this.stopKey(updatedKey.id);
+        this.log(key, 'Deactivated due to status 102');
+        return Date.now() - startTime;
+      }
+
       if (data.status === 101) {
         updatedKey = {
           ...key,
           proxyData: key.proxyData
-            ? { ...key.proxyData, message: data.message }
+            ? { ...key.proxyData, message: data.message, status: data.status }
             : data
         };
       } else {
-        // Preserve the manually set expirationDate instead of overwriting with API response
         const updatedProxyData = { ...data };
-        if (key.expirationDate) {
-          // updatedProxyData["Token expiration date"] = key.expirationDate;
-        }
-        
         updatedKey = {
           ...key,
           proxyData: updatedProxyData,
