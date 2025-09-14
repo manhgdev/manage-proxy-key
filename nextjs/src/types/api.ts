@@ -12,6 +12,7 @@ export interface AutoRunResponse {
 
 export interface ProxyData {
   status: number;
+  error: string;
   message: string;
   proxyhttp: string;
   proxysocks5: string;

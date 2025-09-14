@@ -131,7 +131,7 @@ export class ProxyService {
 
       const data = await response.json() as ProxyData;
 
-      if (data.status === 102) {
+      if (data?.status === 102 || data?.error == "Key không tồn tại") {
         updatedKey = {
           ...key,
           isActive: false,
@@ -144,7 +144,7 @@ export class ProxyService {
         return Date.now() - startTime;
       }
 
-      if (data.status === 101) {
+      if (data.status === 101 || data?.error == "too_many_requests") {
         updatedKey = {
           ...key,
           proxyData: key.proxyData
