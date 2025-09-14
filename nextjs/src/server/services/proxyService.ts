@@ -223,6 +223,10 @@ export class ProxyService {
     const now = Date.now();
     
     let nextDelay = intervalMs - (now - lastRotatedAt);
+    // If no proxy data yet, fetch immediately on first run
+    if (!dataKey.proxyData) {
+      nextDelay = 0;
+    }
     if (nextDelay < 0) nextDelay = 0;
 
     this.startTimerWithDelay(dataKey, nextDelay);
