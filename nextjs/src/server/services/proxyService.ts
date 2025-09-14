@@ -1,7 +1,8 @@
 import { dbService } from '@server/database';
 import { KeyResponse, ProxyData } from '@/types/api';
 
-const PROXY_API_URL = 'https://proxyxoay.org/api/get.php?key=';
+// Default fallback if a key doesn't have a custom URL saved
+const DEFAULT_PROXY_API_URL = 'https://proxyxoay.org/api/get.php?key=';
 
 export class ProxyService {
   private timers: Map<string, NodeJS.Timeout> = new Map();
@@ -124,7 +125,8 @@ export class ProxyService {
 
     try {
       let updatedKey: KeyResponse;
-      const response = await fetch(PROXY_API_URL + key.key);
+  const requestUrl = this.buildRequestUrl(key);
+  const response = await fetch(requestUrl);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const data = await response.json() as ProxyData;
@@ -171,6 +173,32 @@ export class ProxyService {
         fetchTime: `${Date.now() - startTime}ms`
       });
       return 0;
+    }
+  }
+
+  // Build the request URL using the key's custom base URL when available.
+  // Supports patterns:
+  // - URL contains {KEY} or {key} -> will be replaced by the actual key (url-encoded)
+  // - URL without placeholder -> will add/override query param `key=<value>`
+  // - Missing/invalid URL -> fallback to DEFAULT_PROXY_API_URL
+  private buildRequestUrl(key: KeyResponse): string {
+    const base = (key.url && key.url.trim().length > 0) ? key.url.trim() : DEFAULT_PROXY_API_URL;
+
+    // Replace placeholder if provided
+    if (base.includes('{KEY}') || base.includes('{key}')) {
+      return base.replaceAll('{KEY}', encodeURIComponent(key.key)).replaceAll('{key}', encodeURIComponent(key.key));
+    }
+
+    // Try to manipulate via URL API to avoid duplicate params
+    try {
+      const urlObj = new URL(base);
+      urlObj.searchParams.set('key', key.key);
+      return urlObj.toString();
+    } catch {
+      // Fallback for non-standard base; simply concatenate
+      const joiner = base.includes('?') ? (base.endsWith('&') || base.endsWith('?') ? '' : (base.endsWith('=') ? '' : '&')) : '?';
+      const maybeEq = base.endsWith('=') ? '' : 'key=';
+      return `${base}${joiner}${maybeEq}${encodeURIComponent(key.key)}`;
     }
   }
 

@@ -47,8 +47,10 @@ export default function ProxyKeyManager() {
   const [proxyKeys, setProxyKeys] = useState<ProxyKey[]>([]);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const DEFAULT_PROXY_API_URL = 'https://proxyxoay.org/api/get.php?key=';
   const [newKey, setNewKey] = useState({
     key: '',
+    url: DEFAULT_PROXY_API_URL,
     rotationInterval: 60,
     expirationDate: '',
   });
@@ -73,6 +75,7 @@ export default function ProxyKeyManager() {
   const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [bulkRotationInterval, setBulkRotationInterval] = useState(60);
   const [bulkExpirationDate, setBulkExpirationDate] = useState('');
+  const [bulkUrl, setBulkUrl] = useState('');
 
   useEffect(() => {
     const initializeAutoRun = async () => {
@@ -149,6 +152,7 @@ export default function ProxyKeyManager() {
           },
           body: JSON.stringify({
             key: key,
+            url: newKey.url,
             rotationInterval: newKey.rotationInterval,
             expirationDate: newKey.expirationDate,
             isActive: true
@@ -182,6 +186,7 @@ export default function ProxyKeyManager() {
             },
             body: JSON.stringify({
               key: key,
+              url: newKey.url,
               rotationInterval: newKey.rotationInterval,
               expirationDate: newKey.expirationDate,
               isActive: true
@@ -207,7 +212,7 @@ export default function ProxyKeyManager() {
     }
 
     await fetchKeys();
-    setNewKey({ key: '', rotationInterval: 60, expirationDate: '' });
+  setNewKey({ key: '', url: DEFAULT_PROXY_API_URL, rotationInterval: 60, expirationDate: '' });
     setUploadedKeys([]);
     setIsEditModalOpen(false);
 
@@ -294,6 +299,7 @@ export default function ProxyKeyManager() {
 
     setNewKey({
       key: proxyKey.key,
+  url: proxyKey.url || DEFAULT_PROXY_API_URL,
       rotationInterval: proxyKey.rotationInterval,
       expirationDate: formattedDate,
     });
@@ -310,7 +316,7 @@ export default function ProxyKeyManager() {
     const updatedKey: ProxyKey = {
       id: editingId || Date.now().toString(),
       key: newKey.key,
-      url: '',
+  url: newKey.url,
       expirationDate: newKey.expirationDate,
       isActive: true,
       createdAt: new Date().toISOString(),
@@ -330,7 +336,7 @@ export default function ProxyKeyManager() {
       const data = await response.json();
       if (response.ok) {
         await fetchKeys();
-        setNewKey({ key: '', rotationInterval: 60, expirationDate: '' });
+  setNewKey({ key: '', url: DEFAULT_PROXY_API_URL, rotationInterval: 60, expirationDate: '' });
         setEditingId(null);
         setIsEditModalOpen(false);
         showToast('Key updated successfully', 'success');
@@ -344,7 +350,7 @@ export default function ProxyKeyManager() {
   };
 
   const handleCancel = () => {
-    setNewKey({ key: '', rotationInterval: 60, expirationDate: '' });
+  setNewKey({ key: '', url: DEFAULT_PROXY_API_URL, rotationInterval: 60, expirationDate: '' });
     setEditingId(null);
     setIsEditModalOpen(false);
     setUploadedKeys([]);
@@ -509,7 +515,8 @@ export default function ProxyKeyManager() {
           const updatedKey: ProxyKey = {
             ...key,
             rotationInterval: bulkRotationInterval,
-            expirationDate: bulkExpirationDate || key.expirationDate
+    expirationDate: bulkExpirationDate || key.expirationDate,
+    url: bulkUrl || key.url
           };
           const response = await fetch('/api/keys', {
             method: 'PUT',
@@ -527,7 +534,8 @@ export default function ProxyKeyManager() {
       }
       showToast(`Updated ${keysToUpdate.length} keys`, 'success');
       setIsBulkEditModalOpen(false);
-      setBulkExpirationDate(''); // Reset after successful update
+  setBulkExpirationDate(''); // Reset after successful update
+  setBulkUrl('');
     } catch (error) {
       console.error('Failed to update keys:', error);
       showToast('Failed to update keys', 'error');
@@ -549,7 +557,7 @@ export default function ProxyKeyManager() {
   };
 
   const handleAddNew = () => {
-    setNewKey({ key: '', rotationInterval: 60, expirationDate: '' });
+  setNewKey({ key: '', url: DEFAULT_PROXY_API_URL, rotationInterval: 60, expirationDate: '' });
     setEditingId(null);
     setIsEditModalOpen(true);
   };
@@ -660,6 +668,21 @@ export default function ProxyKeyManager() {
               </div>
 
               <div className="p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    API URL
+                  </label>
+                  <input
+                    type="text"
+                    value={newKey.url}
+                    onChange={(e) => setNewKey({ ...newKey, url: e.target.value })}
+                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-mono"
+                    placeholder="https://example.com/api/get.php?key={KEY}"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Use {`{KEY}`} placeholder or ensure a "key" query param will be appended.
+                  </p>
+                </div>
                 <div className="space-y-3">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Proxy Key{editingId ? '' : 's'}
@@ -824,6 +847,26 @@ export default function ProxyKeyManager() {
                     </div>
                   </div>
 
+                  {/* API URL (optional) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      API URL (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={bulkUrl}
+                      onChange={(e) => setBulkUrl(e.target.value)}
+                      placeholder="Leave empty to keep existing URLs"
+                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 
+                               shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               transition-all duration-200 font-mono"
+                    />
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Use {`{KEY}`} placeholder or a key query param will be appended automatically.
+                    </p>
+                  </div>
+
                   {/* Expiration Date */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -857,6 +900,7 @@ export default function ProxyKeyManager() {
                   onClick={() => {
                     setIsBulkEditModalOpen(false);
                     setBulkExpirationDate('');
+                    setBulkUrl('');
                   }}
                   className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 
                            transition-colors duration-200 flex items-center space-x-2 font-medium"
