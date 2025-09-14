@@ -10,7 +10,7 @@ export async function GET() {
   try {
     const keys = await dbService.getKeys();
     const validKeys = keys.filter(key => 
-      key.proxyData?.status === 100 && 
+      // key.proxyData?.status === 100 && 
       key.isActive
     );
 
