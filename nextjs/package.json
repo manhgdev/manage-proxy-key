@@ -13,7 +13,7 @@
     "dev:proxy": "nodemon --exec 'bun run' src/server/intermediary/index.ts"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^12.5.0",
     "next": "15.3.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

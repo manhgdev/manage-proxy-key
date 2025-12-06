@@ -586,6 +586,17 @@ export default function ProxyKeyManager() {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">API Endpoints</h2>
           <div className="flex flex-col space-y-2">
             <div className="flex items-center">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2">proxy-list:</span>
+              <a 
+                href="/api/proxy/list" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-mono"
+              >
+                /api/proxy/list
+              </a>
+            </div>
+            <div className="flex items-center">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2">proxy-random:</span>
               <a 
                 href="/api/proxy/random" 
