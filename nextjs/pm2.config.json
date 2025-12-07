@@ -1,11 +1,12 @@
 {
     "apps": [{
-        "name": "nextjs-proxy-key-manager",
-        "script": "bun",
-        "args": "run start:prod",
+        "name": "proxy_8000",
+        "script": "node_modules/next/dist/bin/next",
+        "args": "start -p 8000",
+        "instances": 1,
+        "exec_mode": "fork",
         "env": {
-            "NODE_ENV": "production",
-            "PORT": 8000
+            "NODE_ENV": "production"
         }
     }]
 }

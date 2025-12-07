@@ -259,23 +259,26 @@ export default function ProxyTable({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="text-sm max-h-10 overflow-y-auto">
-                    {proxyKey.proxyData ? (
-                      <div>
-                        <div className="text-gray-500 dark:text-gray-400 text-xs mb-2">
-                          Last updated: {formatDateTime(proxyKey.lastRotatedAt)}
-                        </div>
-                        <div className="font-medium text-gray-900 dark:text-gray-300">Status: {proxyKey.proxyData.status}</div>
-                        <div className="text-gray-600 dark:text-gray-400">Message: {proxyKey.proxyData.message}</div>
-                        <div className="text-gray-600 dark:text-gray-400">HTTP: {proxyKey.proxyData.proxyhttp}</div>
-                        <div className="text-gray-600 dark:text-gray-400">SOCKS5: {proxyKey.proxyData.proxysocks5}</div>
-                        <div className="text-gray-600 dark:text-gray-400">Network: {proxyKey.proxyData["Nha Mang"]}</div>
-                        <div className="text-gray-600 dark:text-gray-400">Location: {proxyKey.proxyData["Vi Tri"]}</div>
-                        <div className="text-gray-600 dark:text-gray-400">Expiration: {proxyKey.proxyData["Token expiration date"]}</div>
-                      </div>
-                    ) : (
-                      <div className="text-gray-500 dark:text-gray-400 text-sm">No data available</div>
-                    )}
+                  <div className="text-sm max-h-32 overflow-y-auto">
+                    {(() => {
+                      try {
+                        if (!proxyKey.proxyData) {
+                          return <div className="text-gray-500 dark:text-gray-400 text-sm">No data available</div>;
+                        }
+                        return (
+                          <div>
+                            <div className="text-gray-500 dark:text-gray-400 text-xs mb-2">
+                              Last updated: {formatDateTime(proxyKey.lastRotatedAt)}
+                            </div>
+                            <pre className="text-xs bg-gray-50 dark:bg-gray-900 p-2 rounded overflow-x-auto text-gray-900 dark:text-gray-300 whitespace-pre-wrap break-words">
+                              {JSON.stringify(proxyKey.proxyData, null, 2)}
+                            </pre>
+                          </div>
+                        );
+                      } catch (error) {
+                        return <div className="text-red-500 text-xs">Error displaying data</div>;
+                      }
+                    })()}
                   </div>
                 </td>
               </tr>

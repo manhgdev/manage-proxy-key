@@ -47,7 +47,7 @@ export default function ProxyKeyManager() {
   const [proxyKeys, setProxyKeys] = useState<ProxyKey[]>([]);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const DEFAULT_PROXY_API_URL = 'https://proxyxoay.org/api/get.php?key=';
+  const DEFAULT_PROXY_API_URL = 'https://api.proxyxoay.org//api/key_xoay.php?key=';
   const [newKey, setNewKey] = useState({
     key: '',
     url: DEFAULT_PROXY_API_URL,

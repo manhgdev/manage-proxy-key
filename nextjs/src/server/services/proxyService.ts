@@ -2,7 +2,7 @@ import { dbService } from '@server/database';
 import { KeyResponse, ProxyData } from '@/types/api';
 
 // Default fallback if a key doesn't have a custom URL saved
-const DEFAULT_PROXY_API_URL = 'https://proxyxoay.org/api/get.php?key=';
+const DEFAULT_PROXY_API_URL = 'https://api.proxyxoay.org//api/key_xoay.php?key=';
 
 export class ProxyService {
   private timers: Map<string, NodeJS.Timeout> = new Map();
@@ -126,10 +126,23 @@ export class ProxyService {
     try {
       let updatedKey: KeyResponse;
   const requestUrl = this.buildRequestUrl(key);
-  const response = await fetch(requestUrl);
+  const response = await fetch(requestUrl, { 
+    signal: AbortSignal.timeout(30000) // 30s timeout
+  }).catch(err => {
+    console.error(`Fetch error for key ${key.key}:`, err.message);
+    throw err;
+  });
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-      const data = await response.json() as ProxyData;
+      const responseText = await response.text();
+      let data: ProxyData;
+      
+      try {
+        data = JSON.parse(responseText) as ProxyData;
+      } catch (parseError) {
+        console.error(`Invalid JSON response for key ${key.key}:`, responseText.substring(0, 200));
+        throw new Error('Invalid JSON response from proxy API');
+      }
 
       if (data?.status === 102 || data?.error == "Key không tồn tại") {
         updatedKey = {
