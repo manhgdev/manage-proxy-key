@@ -19,11 +19,25 @@ const DB_PATH = path.join(DB_DIR, 'proxy_keys.db');
 let db: Database.Database;
 
 try {
-  db = new Database(DB_PATH, {  });
-  Object.values(SCHEMA).forEach(schema => db.exec(schema));
+  db = new Database(DB_PATH, {});
+  Object.values(SCHEMA).forEach(schema => {
+    try {
+      db.exec(schema);
+    } catch (err) {
+      console.error('Error executing schema:', err);
+    }
+  });
 } catch (error) {
   console.error('Error initializing database:', error);
-  process.exit(1);
+  // Create in-memory database as fallback - DON'T EXIT
+  db = new Database(':memory:');
+  Object.values(SCHEMA).forEach(schema => {
+    try {
+      db.exec(schema);
+    } catch (err) {
+      console.error('Error executing schema in fallback:', err);
+    }
+  });
 }
 
 export const dbService = {
@@ -31,20 +45,28 @@ export const dbService = {
     try {
       const stmt = db.prepare('SELECT * FROM proxy_keys');
       const rows = stmt.all() as DatabaseRow[];
-      return rows.map(row => ({
-        id: row.id,
-        key: row.key,
-        url: row.url,
-        expirationDate: row.expirationDate,
-        isActive: Boolean(row.isActive),
-        createdAt: row.createdAt,
-        lastRotatedAt: row.lastRotatedAt,
-        rotationInterval: row.rotationInterval || 60,
-        proxyData: row.proxyData ? JSON.parse(row.proxyData) : null
-      }));
+      return rows.map(row => {
+        let proxyData = null;
+        try {
+          proxyData = row.proxyData ? JSON.parse(row.proxyData) : null;
+        } catch (e) {
+          console.error('Invalid proxyData JSON for key:', row.key);
+        }
+        return {
+          id: row.id,
+          key: row.key,
+          url: row.url,
+          expirationDate: row.expirationDate,
+          isActive: Boolean(row.isActive),
+          createdAt: row.createdAt,
+          lastRotatedAt: row.lastRotatedAt,
+          rotationInterval: row.rotationInterval || 60,
+          proxyData
+        };
+      });
     } catch (error) {
       console.error('Error getting keys:', error);
-      throw error;
+      return [];
     }
   },
 
@@ -69,7 +91,7 @@ export const dbService = {
       );
     } catch (error) {
       console.error('Error adding key:', error);
-      throw error;
+      // Don't crash, just log
     }
   },
 
@@ -79,6 +101,12 @@ export const dbService = {
       const row = stmt.get(id) as DatabaseRow | undefined;
       if (!row) return null;
 
+      let proxyData = null;
+      try {
+        proxyData = row.proxyData ? JSON.parse(row.proxyData) : null;
+      } catch (e) {
+        console.error('Invalid proxyData JSON for key:', row.key);
+      }
       return {
         id: row.id,
         key: row.key,
@@ -88,11 +116,11 @@ export const dbService = {
         createdAt: row.createdAt,
         lastRotatedAt: row.lastRotatedAt,
         rotationInterval: row.rotationInterval || 60,
-        proxyData: row.proxyData ? JSON.parse(row.proxyData) : null
+        proxyData
       };
     } catch (error) {
       console.error('Error getting key by id:', error);
-      throw error;
+      return null;
     }
   },
 
@@ -101,6 +129,12 @@ export const dbService = {
       const stmt = db.prepare('SELECT * FROM proxy_keys WHERE key = ? LIMIT 1');
       const row = stmt.get(value) as DatabaseRow | undefined;
       if (!row) return null;
+      let proxyData = null;
+      try {
+        proxyData = row.proxyData ? JSON.parse(row.proxyData) : null;
+      } catch (e) {
+        console.error('Invalid proxyData JSON for key:', row.key);
+      }
       return {
         id: row.id,
         key: row.key,
@@ -110,11 +144,11 @@ export const dbService = {
         createdAt: row.createdAt,
         lastRotatedAt: row.lastRotatedAt,
         rotationInterval: row.rotationInterval || 60,
-        proxyData: row.proxyData ? JSON.parse(row.proxyData) : null
+        proxyData
       };
     } catch (error) {
       console.error('Error getting key by value:', error);
-      throw error;
+      return null;
     }
   },
 
@@ -144,7 +178,7 @@ export const dbService = {
       );
     } catch (error) {
       console.error('Error updating key:', error);
-      throw error;
+      // Don't crash, just log
     }
   },
 
@@ -154,7 +188,7 @@ export const dbService = {
       stmt.run(id);
     } catch (error) {
       console.error('Error deleting key:', error);
-      throw error;
+      // Don't crash, just log
     }
   },
 
@@ -168,7 +202,7 @@ export const dbService = {
       stmt.run(id);
     } catch (error) {
       console.error('Error toggling key:', error);
-      throw error;
+      // Don't crash, just log
     }
   },
 
@@ -179,7 +213,7 @@ export const dbService = {
       return result ? result.value === 'true' : true;
     } catch (error) {
       console.error('Error getting auto run status:', error);
-      throw error;
+      return true;
     }
   },
 
@@ -189,7 +223,7 @@ export const dbService = {
       stmt.run('isAutoRunning', status.toString());
     } catch (error) {
       console.error('Error setting auto run status:', error);
-      throw error;
+      // Don't crash, just log
     }
   }
 }; 

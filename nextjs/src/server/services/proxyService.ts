@@ -1,11 +1,14 @@
 import { dbService } from '@server/database';
 import { KeyResponse, ProxyData } from '@/types/api';
 
+// Declare process for Node.js environment
+declare const process: { pid: number };
+
 // Default fallback if a key doesn't have a custom URL saved
 const DEFAULT_PROXY_API_URL = 'https://api.proxyxoay.org//api/key_xoay.php?key=';
 
 export class ProxyService {
-  private timers: Map<string, NodeJS.Timeout> = new Map();
+  private timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private processing: Map<string, boolean> = new Map();
   private isAutoRunning: boolean;
   private isInitialized: boolean;
@@ -58,8 +61,9 @@ export class ProxyService {
       }
       this.isInitialized = true;
     } catch (error) {
-      console.error('Failed to initialize:', error);
-      throw error;
+      console.error('Failed to initialize ProxyService:', error instanceof Error ? error.message : String(error));
+      // Don't crash, mark as initialized anyway
+      this.isInitialized = true;
     }
   }
 
@@ -124,67 +128,105 @@ export class ProxyService {
     const startTime = Date.now();
 
     try {
-      let updatedKey: KeyResponse;
-  const requestUrl = this.buildRequestUrl(key);
-  const response = await fetch(requestUrl, { 
-    signal: AbortSignal.timeout(30000) // 30s timeout
-  }).catch(err => {
-    console.error(`Fetch error for key ${key.key}:`, err.message);
-    throw err;
-  });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      const responseText = await response.text();
-      let data: ProxyData;
+      const requestUrl = this.buildRequestUrl(key);
+      this.log(key, `🔄 Starting fetch: ${requestUrl}`);
       
+      let response: Response | null = null;
       try {
-        data = JSON.parse(responseText) as ProxyData;
-      } catch (parseError) {
-        console.error(`Invalid JSON response for key ${key.key}:`, responseText.substring(0, 200));
-        throw new Error('Invalid JSON response from proxy API');
+        response = await fetch(requestUrl, { 
+          signal: AbortSignal.timeout(30000)
+        });
+      } catch {
+        this.log(key, `❌ Fetch failed: Network error`);
+        return 0;
+      }
+      
+      if (!response || !response.ok) {
+        this.log(key, `❌ Fetch failed: HTTP ${response?.status || 'no response'}`);
+        return 0;
       }
 
-      if (data?.status === 102 || data?.error == "Key không tồn tại") {
-        updatedKey = {
+      // Check content-type to avoid parsing binary data
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json') && !contentType.includes('text/')) {
+        this.log(key, `❌ Invalid content-type: ${contentType.slice(0, 50)}`);
+        return 0;
+      }
+
+      let responseText = '';
+      try {
+        responseText = await response.text();
+      } catch {
+        this.log(key, '❌ Failed to read response');
+        return 0;
+      }
+
+      if (!responseText) {
+        this.log(key, '❌ Empty response');
+        return 0;
+      }
+
+      // Check if response looks like JSON before parsing
+      const trimmed = responseText.trim();
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        this.log(key, `❌ Response is not JSON`);
+        return 0;
+      }
+
+      // Limit response size to prevent stack overflow
+      if (responseText.length > 100000) {
+        this.log(key, `❌ Response too large: ${responseText.length} bytes`);
+        return 0;
+      }
+      
+      let data: ProxyData;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        this.log(key, `❌ Invalid JSON response`);
+        return 0;
+      }
+
+      // Handle deactivation
+      if (data?.error == "invalid_key" || data?.status === 102 || data?.message === "Key không tồn tại") {
+        this.log(key, `⚠️ Key deactivated: ${data.message || data.error}`);
+        await dbService.updateKey({
           ...key,
           isActive: false,
           proxyData: data,
           lastRotatedAt: new Date().toISOString()
-        };
-        await dbService.updateKey(updatedKey);
-        this.stopKey(updatedKey.id);
-        this.log(key, 'Deactivated due to status 102');
+        });
+        this.stopKey(key.id);
         return Date.now() - startTime;
       }
 
-      if (data.status === 101 || data?.error == "too_many_requests") {
-        updatedKey = {
-          ...key,
-          proxyData: key.proxyData
-            ? { ...key.proxyData, message: data.message, status: data.status }
-            : data
-        };
+      // Update proxy data
+      await dbService.updateKey({
+        ...key,
+        proxyData: data.status === 101 || data?.error === "too_many_requests"
+          ? { 
+              ...data,
+              ...key.proxyData, 
+              message: data.message, 
+              status: data.status 
+            }
+          : data,
+        lastRotatedAt: data.status !== 101 ? new Date().toISOString() : key.lastRotatedAt
+      });
+
+      // Log successful fetch
+      const fetchTime = Date.now() - startTime;
+      if (data.status === 101 || data?.error === "too_many_requests") {
+        this.log(key, `⏳ Too many requests, waiting... (${fetchTime}ms)`);
       } else {
-        const updatedProxyData = { ...data };
-        updatedKey = {
-          ...key,
-          proxyData: updatedProxyData,
-          lastRotatedAt: new Date().toISOString()
-        };
+        const proxyInfo = data.proxyhttp || data.proxysocks5 || 'N/A';
+        this.log(key, `✅ Fetch completed: ${proxyInfo} (${fetchTime}ms)`);
       }
 
-      await dbService.updateKey(updatedKey);
-
-      const fetchTime = Date.now() - startTime;
-      this.log(key, '🚀 Fetch completed: ' + `${fetchTime}ms`);
       return fetchTime;
-
-    } catch (error) {
-      console.error(`Error fetching proxy data for key ${key.id}:`, error);
-      this.log(key, 'Fetch failed', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        fetchTime: `${Date.now() - startTime}ms`
-      });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.log(key, `❌ Error: ${msg.slice(0, 100)}`);
       return 0;
     }
   }
@@ -254,32 +296,26 @@ export class ProxyService {
     this.stopTimer(dataKey.id);
     
     const timer = setTimeout(async () => {
-      this.timers.delete(dataKey.id);
-
-      if (!this.isAutoRunning || this.processing.get(dataKey.id)) {
-        this.log(dataKey, 'Timer aborted or already processing');
-        return;
-      }
-
-      this.processing.set(dataKey.id, true);
-
       try {
-        if (!dataKey || !dataKey.isActive) {
-          this.log(dataKey, 'Key not found or inactive, stopping timer');
-          this.stopKey(dataKey.id);
-          return;
+        this.timers.delete(dataKey.id);
+        if (!this.isAutoRunning || this.processing.get(dataKey.id)) return;
+
+        this.processing.set(dataKey.id, true);
+
+        try {
+          if (!dataKey?.isActive) {
+            this.stopKey(dataKey.id);
+            return;
+          }
+
+          const fetchTime = await this.fetchProxyData(dataKey);
+          const nextDelay = dataKey.rotationInterval * 1000 + fetchTime;
+          this.startTimerWithDelay(dataKey, nextDelay);
+        } finally {
+          this.processing.delete(dataKey.id);
         }
-
-        const fetchTime = await this.fetchProxyData(dataKey);
-        const intervalMs = dataKey.rotationInterval * 1000;
-        let nextDelay = intervalMs + fetchTime;
-
-        this.log(dataKey, '🔄 Timer scheduled nextRun: ' + `${(nextDelay / 1000).toFixed(1)}s`);
-        this.startTimerWithDelay(dataKey, nextDelay);
       } catch (error) {
-        console.error(`Error in timer for key ${dataKey.id}:`, error);
-      } finally {
-        this.processing.delete(dataKey.id);
+        console.error('[TIMER ERROR]', error instanceof Error ? error.message : String(error));
       }
     }, delay);
 

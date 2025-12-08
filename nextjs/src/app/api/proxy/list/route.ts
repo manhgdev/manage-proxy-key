@@ -17,12 +17,23 @@ export async function GET() {
     }
 
     // Trả về danh sách tất cả proxy data
-    const proxyList = validKeys.map(key => ({
-      key: key.key,
-      lastRotatedAt: key.lastRotatedAt,
-      rotationInterval: key.rotationInterval,
-      ...key.proxyData
-    }));
+    const proxyList = validKeys.map(key => {
+      try {
+        return {
+          key: key.key,
+          lastRotatedAt: key.lastRotatedAt,
+          rotationInterval: key.rotationInterval,
+          ...key.proxyData
+        };
+      } catch (error) {
+        // If spread fails, return minimal data
+        return {
+          key: key.key,
+          lastRotatedAt: key.lastRotatedAt,
+          rotationInterval: key.rotationInterval
+        };
+      }
+    });
 
     return NextResponse.json({
       total: proxyList.length,

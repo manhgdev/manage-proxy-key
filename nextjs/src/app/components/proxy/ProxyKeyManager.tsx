@@ -364,7 +364,10 @@ export default function ProxyKeyManager() {
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to toggle auto run');
+      if (!response.ok) {
+        showToast(data.error || 'Failed to toggle auto run', 'error');
+        return;
+      }
 
       setIsAutoRunning(data.isAutoRunning);
       showToast(
